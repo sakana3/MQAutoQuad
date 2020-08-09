@@ -173,7 +173,7 @@ MQPoint2 CalcProjection(const MQPoint& qp, const MQMatrix& m)
 	return MQPoint2( -0 , -0 );
 }
 
-int IntersectLineAndLine( MQPoint &a, MQPoint &b, MQPoint &c, MQPoint &d)
+int IntersectLineAndLine( const MQPoint &a, const MQPoint &b, const MQPoint &c, const MQPoint &d)
 {
 	float s, t;
 	s = (a.x - b.x) * (c.y - a.y) - (a.y - b.y) * (c.x - a.x);
@@ -239,68 +239,18 @@ public:
 	// マウスが移動したとき
 	virtual BOOL OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state);
 
+	std::vector<int> FindQuad(MQDocument doc, MQScene scene, const MQPoint& mouse_pos);
+
 private:
 	bool m_bActivated;
 	bool m_bUseHandle;
 	bool m_bShowHandle;
 
-	int Quad[4] = {-1,-1,-1,-1};
+	std::vector<int> Quad;
 	MQBorders borders;
 
 	HCURSOR m_MoveCursor;
-
-	MQAutoQuadWindow *m_Window;
 };
-
-
-class MQAutoQuadWindow : public MQWindow
-{
-public:
-	MQAutoQuadWindow(int id, SingleMovePlugin *plugin);
-	~MQAutoQuadWindow();
-
-	MQCheckBox *m_UseHandleCheck;
-
-	SingleMovePlugin *m_Plugin;
-
-	BOOL UseHandleChanged(MQWidgetBase *sender, MQDocument doc);
-
-private:
-
-};
-
-
-MQAutoQuadWindow::MQAutoQuadWindow(int id, SingleMovePlugin *plugin) : MQWindow(id)
-{
-	m_Plugin = plugin;
-
-	MQFrame *frame = CreateVerticalFrame(this);
-	frame->SetOutSpace(0.2);
-
-	MQFrame *hframe = CreateHorizontalFrame(frame);
-	hframe->SetUniformSize(true);
-
-	m_UseHandleCheck = CreateCheckBox(frame, L"Use handle");
-	m_UseHandleCheck->SetChecked(m_Plugin->m_bUseHandle);
-	m_UseHandleCheck->AddChangedEvent(this, &MQAutoQuadWindow::UseHandleChanged);
-}
-
-MQAutoQuadWindow::~MQAutoQuadWindow()
-{
-	//UnregisterDisabledWidget(m_ClosedCheck);
-}
-
-BOOL MQAutoQuadWindow::UseHandleChanged(MQWidgetBase *sender, MQDocument doc)
-{
-	m_Plugin->m_bUseHandle = m_UseHandleCheck->GetChecked();
-
-	if(m_Plugin->m_bShowHandle){
-		m_Plugin->m_bShowHandle = false;
-		m_Plugin->RedrawAllScene();
-	}
-	return TRUE;
-}
-
 
 
 //---------------------------------------------------------------------------
@@ -310,12 +260,8 @@ BOOL MQAutoQuadWindow::UseHandleChanged(MQWidgetBase *sender, MQDocument doc)
 SingleMovePlugin::SingleMovePlugin()
 {
 	m_bActivated = false;
-	m_bUseHandle = true;
-	m_bShowHandle = false;
 	m_MoveCursor = NULL;
-	m_Window = NULL;
 }
-
 
 //---------------------------------------------------------------------------
 //  SingleMovePlugin::GetPlugInID
@@ -371,11 +317,6 @@ BOOL SingleMovePlugin::Initialize()
 //---------------------------------------------------------------------------
 void SingleMovePlugin::Exit()
 {
-	// Release the window
-	// ウィンドウを破棄
-	delete m_Window;
-	m_Window = NULL;
-
 }
 
 //---------------------------------------------------------------------------
@@ -384,22 +325,6 @@ void SingleMovePlugin::Exit()
 //---------------------------------------------------------------------------
 BOOL SingleMovePlugin::Activate(MQDocument doc, BOOL flag)
 {
-	if (flag){
-		// Create a window
-		// ウィンドウを作成
-		m_Window = new MQAutoQuadWindow(MQWindow::GetSystemWidgetID(MQSystemWidget::OptionPanel), this);
-		m_Window->SetTitle(L"SingleMove");
-		POINT size = m_Window->GetJustSize();
-		m_Window->SetWidth(size.x);
-		m_Window->SetHeight(size.y);
-		m_Window->SetVisible(true);
-	}else{
-		// Delete a window
-		// ウィンドウを破棄
-		delete m_Window;
-		m_Window = NULL;
-	}
-
 	m_bActivated = flag ? true : false;
 	
 	// It returns 'flag' as it is.
@@ -433,7 +358,7 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 		drawEdge->AddFace(2, newface);
 	}
 
-	if (Quad[0] >= 0 && Quad[1] >= 0 && Quad[2] >= 0 && Quad[3] >= 0)
+	if ( Quad.size() == 4 )
 	{
 		MQObject drawQuad = CreateDrawingObject(doc, DRAW_OBJECT_FACE );
 		int iMaterial;
@@ -467,11 +392,11 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 //---------------------------------------------------------------------------
 BOOL SingleMovePlugin::OnLeftButtonDown(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
 {
-	if ( Quad[0] > -1 && Quad[1] > -1 && Quad[2] > -1 && Quad[3] > -1)
+	if ( Quad.size() == 4 )
 	{
 		MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
 
-		auto face = obj->AddFace( 4 , Quad );
+		auto face = obj->AddFace( 4 , Quad.data() );
 		obj->SetFaceMaterial(face, doc->GetCurrentMaterialIndex());
 
 		if (!IsFrontFace(scene, obj, face))
@@ -550,106 +475,18 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 	objlist.push_back(obj);
 	this->HitTestObjects(scene, state.MousePos , objlist, param);
 
+	std::vector<int> new_quad;
 	if (param.HitType != MQCommandPlugin::HIT_TYPE::HIT_TYPE_FACE)
 	{
-		// ボーダーエッジ抽出
-		borders = MQBorders( scene , obj);
-
-		// 頂点の射影変換
-		typedef std::pair<int, float> pair;
-		int numVertex = obj->GetVertexCount();
-		auto verts = std::vector<MQPoint>(numVertex);
-		auto coords = std::vector<MQPoint>(numVertex);
-		obj->GetVertexArray(verts.data());
-
-		auto vertset = std::vector< pair >();
-		for (int vi : borders.verts)
-		{
-			float w = 0.0f;
-			auto coord = scene->Convert3DToScreen(verts[vi], &w);
-			coords[vi] = coord;
-
-			if (w > 0.0f)
-			{
-				float dx = mouse_pos.x - coords[vi].x;
-				float dy = mouse_pos.y - coords[vi].y;
-				float dist = dx * dx + dy * dy;
-				vertset.push_back(pair(vi, dist));
-			}
-		}
-
-		std::sort(
-			vertset.begin(),
-			vertset.end(),
-			[](const pair& lhs, const pair& rhs) { return lhs.second < rhs.second; }
-		);
-
-		std::vector<int> new_quad = std::vector<int>();
-		new_quad.reserve(4);
-		for (const pair& t : vertset)
-		{
-			auto v = t.first;
-			auto p = coords[v];
-
-			bool isHitOtherEdge = false;
-			for (const std::pair<int, int>& border : borders.edges)
-			{
-				if (IntersectLineAndLine(mouse_pos, p, coords[border.first], coords[border.second]))
-				{
-					if (border.first != v && border.second != v)
-					{
-						isHitOtherEdge = true;
-						break;
-					}
-				}
-			}
-			if (!isHitOtherEdge)
-			{
-				new_quad.push_back(t.first);
-				if (new_quad.size() >= 4)
-				{
-					auto tmp_quad = MakeQuad(new_quad, verts);
-					if (PointInQuad(mouse_pos, coords[tmp_quad[0]], coords[tmp_quad[1]], coords[tmp_quad[2]], coords[tmp_quad[3]]))
-					{
-						new_quad = tmp_quad;
-						break;
-					}
-					else
-					{
-						new_quad.pop_back();
-					}
-				}
-			}
-		}
-
-
-		// Quad作成マン
-		auto old_Quad = std::vector<int>(std::begin(Quad), std::end(Quad));
-		Quad[0] = -1;
-		Quad[1] = -1;
-		Quad[2] = -1;
-		Quad[3] = -1;
-
-		if (new_quad.size() >= 4)
-		{
-			for (int i = 0; i < 4; i++)
-			{
-				Quad[i] = new_quad[i];
-			}
-		}
-
-		if (old_Quad[0] != Quad[0] || old_Quad[1] == Quad[1] || old_Quad[1] == Quad[1] || old_Quad[1] == Quad[1])
-		{
-			redraw = true;
-		}
+		new_quad = FindQuad(doc,scene,mouse_pos);
 	}
-	else
+
+	if (new_quad != Quad)
 	{
-		Quad[0] = -1;
-		Quad[1] = -1;
-		Quad[2] = -1;
-		Quad[3] = -1;
+		Quad = new_quad;
+		redraw = true;
 	}
+
 /*
 	if(m_ActiveHandle == MQHandleInfo::HandleNone && m_iHighlightVertex != -1){
 		SetMouseCursor(m_MoveCursor);
@@ -666,7 +503,87 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 	return FALSE;
 }
 
+std::vector<int> SingleMovePlugin::FindQuad(MQDocument doc, MQScene scene, const MQPoint& mouse_pos)
+{
+	MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
 
+	// ボーダーエッジ抽出
+	borders = MQBorders(scene, obj);
+
+	// 頂点の射影変換
+	typedef std::pair<int, float> pair;
+	int numVertex = obj->GetVertexCount();
+	auto verts = std::vector<MQPoint>(numVertex);
+	auto coords = std::vector<MQPoint>(numVertex);
+	obj->GetVertexArray(verts.data());
+
+	auto vertset = std::vector< pair >();
+	for (int vi : borders.verts)
+	{
+		float w = 0.0f;
+		auto coord = scene->Convert3DToScreen(verts[vi], &w);
+		coords[vi] = coord;
+
+		if (w > 0.0f)
+		{
+			float dx = mouse_pos.x - coords[vi].x;
+			float dy = mouse_pos.y - coords[vi].y;
+			float dist = dx * dx + dy * dy;
+			vertset.push_back(pair(vi, dist));
+		}
+	}
+
+	std::sort(
+		vertset.begin(),
+		vertset.end(),
+		[](const pair& lhs, const pair& rhs) { return lhs.second < rhs.second; }
+	);
+
+	std::vector<int> new_quad = std::vector<int>();
+	new_quad.reserve(4);
+	for (const pair& t : vertset)
+	{
+		auto v = t.first;
+		auto p = coords[v];
+
+		bool isHitOtherEdge = false;
+		for (const std::pair<int, int>& border : borders.edges)
+		{
+			if (IntersectLineAndLine(mouse_pos, p, coords[border.first], coords[border.second]))
+			{
+				if (border.first != v && border.second != v)
+				{
+					isHitOtherEdge = true;
+					break;
+				}
+			}
+		}
+		if (!isHitOtherEdge)
+		{
+			new_quad.push_back(t.first);
+			if (new_quad.size() >= 4)
+			{
+				auto tmp_quad = MakeQuad(new_quad, verts);
+				if (PointInQuad(mouse_pos, coords[tmp_quad[0]], coords[tmp_quad[1]], coords[tmp_quad[2]], coords[tmp_quad[3]]))
+				{
+					new_quad = tmp_quad;
+					break;
+				}
+				else
+				{
+					new_quad.pop_back();
+				}
+			}
+		}
+	}
+
+	if (new_quad.size() != 4)
+	{
+		new_quad.clear();
+	}
+
+	return new_quad;
+}
 
 //---------------------------------------------------------------------------
 //  GetPluginClass
