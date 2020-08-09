@@ -363,7 +363,7 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 		drawEdge->AddFace(2, newface);
 	}
 
-	if ( Quad.size() == 4 )
+	if ( !Quad.empty() )
 	{
 		MQObject drawQuad = CreateDrawingObject(doc, DRAW_OBJECT_FACE );
 		int iMaterial;
@@ -375,31 +375,32 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 		drawQuad->SetColor(MQColor(1, 1, 0));
 		drawQuad->SetColorValid(TRUE);
 
-		int newface[4];
-		newface[0] = drawQuad->AddVertex( obj->GetVertex(Quad[0]) );
-		newface[1] = drawQuad->AddVertex( obj->GetVertex(Quad[1]) );
-		newface[2] = drawQuad->AddVertex( obj->GetVertex(Quad[2]) );
-		newface[3] = drawQuad->AddVertex( obj->GetVertex(Quad[3]) );
-		auto iFace = drawQuad->AddFace(4, newface);
+		std::vector<int> newface;
+		for (auto q : Quad)
+		{
+			newface.push_back( drawQuad->AddVertex(obj->GetVertex( q ) ));
+		}
+		auto iFace = drawQuad->AddFace( (int)newface.size(), newface.data() );
 		drawQuad->SetFaceMaterial(iFace, iMaterial);
 
-		int revface[4] = { newface[3] , newface[2] , newface[1] , newface[0] };
-		iFace = drawQuad->AddFace(4, revface);
+		std::reverse(newface.begin(), newface.end());
+		iFace = drawQuad->AddFace((int)newface.size(), newface.data() );
 		drawQuad->SetFaceMaterial(iFace, iMaterial);
 
 		if (Quad.size() == Mirror.size())
 		{
-			int mirrorface[4];
-			mirrorface[0] = drawQuad->AddVertex(obj->GetVertex(Mirror[0]));
-			mirrorface[1] = drawQuad->AddVertex(obj->GetVertex(Mirror[1]));
-			mirrorface[2] = drawQuad->AddVertex(obj->GetVertex(Mirror[2]));
-			mirrorface[3] = drawQuad->AddVertex(obj->GetVertex(Mirror[3]));
-			auto iMirror = drawQuad->AddFace(4, mirrorface);
-			drawQuad->SetFaceMaterial(iMirror, iMaterial);
+			std::vector<int> mirrorface;
+			for (auto q : Mirror)
+			{
+				mirrorface.push_back(drawQuad->AddVertex(obj->GetVertex(q)));
+			}
 
-			int revmirror[4] = { mirrorface[3] , mirrorface[2] , mirrorface[1] , mirrorface[0] };
-			iMirror = drawQuad->AddFace(4, revmirror);
-			drawQuad->SetFaceMaterial(iMirror, iMaterial);
+			auto iFace = drawQuad->AddFace((int)mirrorface.size(), mirrorface.data());
+			drawQuad->SetFaceMaterial(iFace, iMaterial);
+
+			std::reverse(mirrorface.begin(), mirrorface.end());
+			iFace = drawQuad->AddFace((int)mirrorface.size(), mirrorface.data());
+			drawQuad->SetFaceMaterial(iFace, iMaterial);
 		}
 	}
 }
@@ -410,7 +411,7 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 //---------------------------------------------------------------------------
 BOOL SingleMovePlugin::OnLeftButtonDown(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
 {
-	if (Quad.size() == 4)
+	if (Quad.size() >= 3)
 	{
 		MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
 
@@ -589,9 +590,28 @@ std::pair< std::vector<int> , std::vector<int> > SingleMovePlugin::FindQuad(MQDo
 	std::vector<int> mirror;
 	if (new_quad.size() != 4)
 	{
-		new_quad.clear();
+		//ボーダーエッジに囲まれたトライアングルだけ許可する
+		if (new_quad.size() == 3)
+		{
+			for (int i = 0; i < new_quad.size(); i++)
+			{
+				auto e0 = new_quad[i];
+				auto e1 = new_quad[(i + 1) % new_quad.size()];
+				std::pair<int, int> edge = (e0<e1)?std::pair<int, int>(e0, e1): std::pair<int, int>(e1, e0);
+				if (std::find(borders.edges.begin(), borders.edges.end(), edge) == borders.edges.end())
+				{
+					new_quad.clear();
+					break;
+				}
+			}
+		}
+		else
+		{
+			new_quad.clear();
+		}
 	}
-	else
+
+	if(!new_quad.empty())
 	{
 		EDIT_OPTION option;
 		GetEditOption(option);
@@ -607,7 +627,7 @@ std::pair< std::vector<int> , std::vector<int> > SingleMovePlugin::FindQuad(MQDo
 
 int SingleMovePlugin::AddFace(MQScene scene, MQObject obj,  std::vector<int> verts, int iMaterial)
 {
-	auto face = obj->AddFace(4, verts.data());
+	auto face = obj->AddFace( (int)verts.size(), verts.data());
 	obj->SetFaceMaterial(face, iMaterial);
 
 	for (int fi = 0; fi < obj->GetFaceCount(); fi++)
@@ -621,7 +641,7 @@ int SingleMovePlugin::AddFace(MQScene scene, MQObject obj,  std::vector<int> ver
 			for (int ie = 0; ie < verts.size(); ie++)
 			{
 				int e0 = verts[ie];
-				int e1 = verts[(ie + 1) % 4];
+				int e1 = verts[(ie + 1) % verts.size()];
 				if ((e0 == v[0] && e1 == v[1]) || (e0 == v[1] && e1 == v[0]))
 				{
 					obj->DeleteFace(fi, false);
@@ -630,13 +650,12 @@ int SingleMovePlugin::AddFace(MQScene scene, MQObject obj,  std::vector<int> ver
 		}
 	}
 
-
 	return face;
 }
 
 std::vector<int> SingleMovePlugin::FindMirror(MQObject obj, const std::vector<MQPoint>& verts, const std::vector<int>& poly, float SymmetryDistance)
 {
-	std::vector<int> mirror(4, -1);
+	std::vector<int> mirror(poly.size(), -1);
 	auto dist = SymmetryDistance * SymmetryDistance;
 	std::vector<MQPoint> mirrorPos(poly.size());
 	for (int i = 0; i < poly.size(); i++)
