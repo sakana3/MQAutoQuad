@@ -240,18 +240,9 @@ public:
 	virtual BOOL OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state);
 
 private:
-	bool m_bUseHandle;
-
 	bool m_bActivated;
-
+	bool m_bUseHandle;
 	bool m_bShowHandle;
-	MQHandleInfo::AxisType m_ActiveHandle;
-	MQHandleInfo::AxisType m_MoveHandle;
-	MQHandleOperation m_HandleOperation;
-	MQPoint m_HandleOffset;
-	MQPoint m_ScreenPos;
-	MQPoint m_MovedPos;
-	MQSelectOperation m_SelectOperation;
 
 	int Quad[4] = {-1,-1,-1,-1};
 	MQBorders borders;
@@ -318,16 +309,10 @@ BOOL MQAutoQuadWindow::UseHandleChanged(MQWidgetBase *sender, MQDocument doc)
 //---------------------------------------------------------------------------
 SingleMovePlugin::SingleMovePlugin()
 {
-	m_bUseHandle = true;
-
 	m_bActivated = false;
-
+	m_bUseHandle = true;
 	m_bShowHandle = false;
-	m_ActiveHandle = MQHandleInfo::HandleNone;
-	m_MoveHandle = MQHandleInfo::HandleNone;
-
 	m_MoveCursor = NULL;
-
 	m_Window = NULL;
 }
 
@@ -473,10 +458,6 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 		drawQuad->SetFaceMaterial(iFace, iMaterial);
 	}
 
-	if(m_SelectOperation.GetType() != MQSelectOperation::SELECT_NONE)
-	{
-		m_SelectOperation.Draw(this, doc, scene);
-	}
 }
 
 
