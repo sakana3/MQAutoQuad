@@ -239,7 +239,11 @@ public:
 	// マウスが移動したとき
 	virtual BOOL OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state);
 
-	std::vector<int> FindQuad(MQDocument doc, MQScene scene, const MQPoint& mouse_pos);
+	std::pair< std::vector<int>, std::vector<int> > FindQuad(MQDocument doc, MQScene scene, const MQPoint& mouse_pos);
+
+	int AddFace(MQScene scene, MQObject obj, std::vector<int> verts, int iMaterial);
+
+	std::vector<int> FindMirror(MQObject obj, const std::vector<MQPoint>& verts, const std::vector<int>& face, float SymmetryDistance);
 
 private:
 	bool m_bActivated;
@@ -247,6 +251,7 @@ private:
 	bool m_bShowHandle;
 
 	std::vector<int> Quad;
+	std::vector<int> Mirror;
 	MQBorders borders;
 
 	HCURSOR m_MoveCursor;
@@ -381,10 +386,23 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 		int revface[4] = { newface[3] , newface[2] , newface[1] , newface[0] };
 		iFace = drawQuad->AddFace(4, revface);
 		drawQuad->SetFaceMaterial(iFace, iMaterial);
+
+		if (Quad.size() == Mirror.size())
+		{
+			int mirrorface[4];
+			mirrorface[0] = drawQuad->AddVertex(obj->GetVertex(Mirror[0]));
+			mirrorface[1] = drawQuad->AddVertex(obj->GetVertex(Mirror[1]));
+			mirrorface[2] = drawQuad->AddVertex(obj->GetVertex(Mirror[2]));
+			mirrorface[3] = drawQuad->AddVertex(obj->GetVertex(Mirror[3]));
+			auto iMirror = drawQuad->AddFace(4, mirrorface);
+			drawQuad->SetFaceMaterial(iMirror, iMaterial);
+
+			int revmirror[4] = { mirrorface[3] , mirrorface[2] , mirrorface[1] , mirrorface[0] };
+			iMirror = drawQuad->AddFace(4, revmirror);
+			drawQuad->SetFaceMaterial(iMirror, iMaterial);
+		}
 	}
-
 }
-
 
 //---------------------------------------------------------------------------
 //  SingleMovePlugin::OnLeftButtonDown
@@ -392,38 +410,25 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 //---------------------------------------------------------------------------
 BOOL SingleMovePlugin::OnLeftButtonDown(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
 {
-	if ( Quad.size() == 4 )
+	if (Quad.size() == 4)
 	{
 		MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
 
-		auto face = obj->AddFace( 4 , Quad.data() );
-		obj->SetFaceMaterial(face, doc->GetCurrentMaterialIndex());
+		auto face = AddFace(scene, obj, Quad, doc->GetCurrentMaterialIndex());
+		auto mirror = -1;
+		if (Quad.size() == Mirror.size())
+		{
+			mirror = AddFace(scene, obj, Mirror, doc->GetCurrentMaterialIndex());
+		}
 
 		if (!IsFrontFace(scene, obj, face))
 		{
 			obj->InvertFace(face);
-		}
-
-		for (int fi = 0; fi < obj->GetFaceCount(); fi++)
-		{
-			auto cnt = obj->GetFacePointCount(fi);
-			// 不要になったエッジを削除する。（これ必要？）
-			if (cnt == 2)
+			if (mirror >= 0)
 			{
-				int verts[2];
-				obj->GetFacePointArray(fi, verts);
-				for (int ie = 0; ie < 4; ie++)
-				{
-					int e0 = Quad[ie];
-					int e1 = Quad[(ie+1)%4];
-					if ((e0 == verts[0] && e1 == verts[1]) || (e0 == verts[1] && e1 == verts[0]))
-					{
-						obj->DeleteFace(fi, false);
-					}
-				}
+				obj->InvertFace(mirror);
 			}
 		}
-
 
 		obj->Compact();
 
@@ -476,14 +481,18 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 	this->HitTestObjects(scene, state.MousePos , objlist, param);
 
 	std::vector<int> new_quad;
+	std::vector<int> new_mirror;
 	if (param.HitType != MQCommandPlugin::HIT_TYPE::HIT_TYPE_FACE)
 	{
-		new_quad = FindQuad(doc,scene,mouse_pos);
+		auto quads = FindQuad(doc, scene, mouse_pos);
+		new_quad = quads.first;
+		new_mirror = quads.second;
 	}
 
 	if (new_quad != Quad)
 	{
 		Quad = new_quad;
+		Mirror = new_mirror;
 		redraw = true;
 	}
 
@@ -503,7 +512,7 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 	return FALSE;
 }
 
-std::vector<int> SingleMovePlugin::FindQuad(MQDocument doc, MQScene scene, const MQPoint& mouse_pos)
+std::pair< std::vector<int> , std::vector<int> > SingleMovePlugin::FindQuad(MQDocument doc, MQScene scene, const MQPoint& mouse_pos)
 {
 	MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
 
@@ -577,12 +586,96 @@ std::vector<int> SingleMovePlugin::FindQuad(MQDocument doc, MQScene scene, const
 		}
 	}
 
+	std::vector<int> mirror;
 	if (new_quad.size() != 4)
 	{
 		new_quad.clear();
 	}
+	else
+	{
+		EDIT_OPTION option;
+		GetEditOption(option);
+		if (option.Symmetry)
+		{
+			mirror = FindMirror(obj, verts, new_quad, option.SymmetryDistance);
+		}
+	}
 
-	return new_quad;
+	return std::pair< std::vector<int>, std::vector<int> >( new_quad , mirror );
+}
+
+
+int SingleMovePlugin::AddFace(MQScene scene, MQObject obj,  std::vector<int> verts, int iMaterial)
+{
+	auto face = obj->AddFace(4, verts.data());
+	obj->SetFaceMaterial(face, iMaterial);
+
+	for (int fi = 0; fi < obj->GetFaceCount(); fi++)
+	{
+		auto cnt = obj->GetFacePointCount(fi);
+		// 不要になったエッジを削除する。（これ必要？）
+		if (cnt == 2)
+		{
+			int v[2];
+			obj->GetFacePointArray(fi, v);
+			for (int ie = 0; ie < verts.size(); ie++)
+			{
+				int e0 = verts[ie];
+				int e1 = verts[(ie + 1) % 4];
+				if ((e0 == v[0] && e1 == v[1]) || (e0 == v[1] && e1 == v[0]))
+				{
+					obj->DeleteFace(fi, false);
+				}
+			}
+		}
+	}
+
+
+	return face;
+}
+
+std::vector<int> SingleMovePlugin::FindMirror(MQObject obj, const std::vector<MQPoint>& verts, const std::vector<int>& poly, float SymmetryDistance)
+{
+	std::vector<int> mirror(4, -1);
+	auto dist = SymmetryDistance * SymmetryDistance;
+	std::vector<MQPoint> mirrorPos(poly.size());
+	for (int i = 0; i < poly.size(); i++)
+	{
+		auto p = verts[poly[i]];
+		mirrorPos[i] = MQPoint(-p.x, p.y, p.z);
+	}
+
+	for (int fi = 0; fi < poly.size(); fi++)
+	{
+		auto p = mirrorPos[fi];
+		auto dist = SymmetryDistance * SymmetryDistance;
+		for (int vi = 0; vi < verts.size(); vi++)
+		{
+			auto v = verts[vi];
+			auto d = v - p;
+			auto f = d.norm();
+			if (dist >= f)
+			{
+				mirror[fi] = vi;
+				dist = f;
+			}
+		}
+	}
+
+	if (std::find(mirror.begin(), mirror.end(), -1) != mirror.end() )
+	{
+		mirror.clear();
+	}
+	else if (mirror == poly)
+	{
+		mirror.clear();
+	}
+	else
+	{
+		std::reverse(mirror.begin(), mirror.end());
+	}
+
+	return mirror;
 }
 
 //---------------------------------------------------------------------------
