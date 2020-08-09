@@ -228,7 +228,7 @@
     <ClCompile Include="..\MQSelectOperation.cpp" />
     <ClCompile Include="..\MQSetting.cpp" />
     <ClCompile Include="..\MQWidget.cpp" />
-    <ClCompile Include="AutoQuad.cpp" />
+    <ClCompile Include="MQAutoQuad.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\MQ3DLib.h" />
@@ -244,7 +244,7 @@
     <None Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="AutoQuad.rc" />
+    <ResourceCompile Include="MQAutoQuad.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
