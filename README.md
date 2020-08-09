@@ -1,0 +1,2 @@
+# MQAutoQuad
+AutoQuad for Metasequoia 
