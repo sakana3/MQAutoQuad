@@ -209,7 +209,7 @@ bool PointInQuad(const MQPoint& p, const MQPoint& v0, const MQPoint& v1, const M
 
 class SingleMovePlugin : public MQCommandPlugin
 {
-	friend class SingleMoveWindow;
+	friend class MQAutoQuadWindow;
 
 public:
 	// コンストラクタ
@@ -243,11 +243,7 @@ private:
 	bool m_bUseHandle;
 
 	bool m_bActivated;
-	int m_iHighlightObject;
-	int m_iHighlightVertex;
-	int m_iMoveObject;
-	int m_iMoveVertex;
-	bool m_bMoved;
+
 	bool m_bShowHandle;
 	MQHandleInfo::AxisType m_ActiveHandle;
 	MQHandleInfo::AxisType m_MoveHandle;
@@ -262,15 +258,15 @@ private:
 
 	HCURSOR m_MoveCursor;
 
-	SingleMoveWindow *m_Window;
+	MQAutoQuadWindow *m_Window;
 };
 
 
-class SingleMoveWindow : public MQWindow
+class MQAutoQuadWindow : public MQWindow
 {
 public:
-	SingleMoveWindow(int id, SingleMovePlugin *plugin);
-	~SingleMoveWindow();
+	MQAutoQuadWindow(int id, SingleMovePlugin *plugin);
+	~MQAutoQuadWindow();
 
 	MQCheckBox *m_UseHandleCheck;
 
@@ -283,7 +279,7 @@ private:
 };
 
 
-SingleMoveWindow::SingleMoveWindow(int id, SingleMovePlugin *plugin) : MQWindow(id)
+MQAutoQuadWindow::MQAutoQuadWindow(int id, SingleMovePlugin *plugin) : MQWindow(id)
 {
 	m_Plugin = plugin;
 
@@ -295,15 +291,15 @@ SingleMoveWindow::SingleMoveWindow(int id, SingleMovePlugin *plugin) : MQWindow(
 
 	m_UseHandleCheck = CreateCheckBox(frame, L"Use handle");
 	m_UseHandleCheck->SetChecked(m_Plugin->m_bUseHandle);
-	m_UseHandleCheck->AddChangedEvent(this, &SingleMoveWindow::UseHandleChanged);
+	m_UseHandleCheck->AddChangedEvent(this, &MQAutoQuadWindow::UseHandleChanged);
 }
 
-SingleMoveWindow::~SingleMoveWindow()
+MQAutoQuadWindow::~MQAutoQuadWindow()
 {
 	//UnregisterDisabledWidget(m_ClosedCheck);
 }
 
-BOOL SingleMoveWindow::UseHandleChanged(MQWidgetBase *sender, MQDocument doc)
+BOOL MQAutoQuadWindow::UseHandleChanged(MQWidgetBase *sender, MQDocument doc)
 {
 	m_Plugin->m_bUseHandle = m_UseHandleCheck->GetChecked();
 
@@ -325,11 +321,7 @@ SingleMovePlugin::SingleMovePlugin()
 	m_bUseHandle = true;
 
 	m_bActivated = false;
-	m_iHighlightObject = -1;
-	m_iHighlightVertex = -1;
-	m_iMoveObject = -1;
-	m_iMoveVertex = -1;
-	m_bMoved = false;
+
 	m_bShowHandle = false;
 	m_ActiveHandle = MQHandleInfo::HandleNone;
 	m_MoveHandle = MQHandleInfo::HandleNone;
@@ -410,7 +402,7 @@ BOOL SingleMovePlugin::Activate(MQDocument doc, BOOL flag)
 	if (flag){
 		// Create a window
 		// ウィンドウを作成
-		m_Window = new SingleMoveWindow(MQWindow::GetSystemWidgetID(MQSystemWidget::OptionPanel), this);
+		m_Window = new MQAutoQuadWindow(MQWindow::GetSystemWidgetID(MQSystemWidget::OptionPanel), this);
 		m_Window->SetTitle(L"SingleMove");
 		POINT size = m_Window->GetJustSize();
 		m_Window->SetWidth(size.x);
@@ -421,15 +413,6 @@ BOOL SingleMovePlugin::Activate(MQDocument doc, BOOL flag)
 		// ウィンドウを破棄
 		delete m_Window;
 		m_Window = NULL;
-
-		// Erase a highlight
-		// ハイライト表示を消す
-		if(m_bShowHandle || (m_iHighlightObject != -1 && m_iHighlightVertex != -1)){
-			m_bShowHandle = false;
-			m_iHighlightObject = -1;
-			m_iHighlightVertex = -1;
-			RedrawAllScene();
-		}
 	}
 
 	m_bActivated = flag ? true : false;
@@ -447,53 +430,6 @@ BOOL SingleMovePlugin::Activate(MQDocument doc, BOOL flag)
 void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int height)
 {
 	if(!m_bActivated) return;
-
-	// Show a handle.
-	// ハンドルを表示
-	if (m_iMoveObject != -1 && m_iMoveVertex != -1 && m_bShowHandle)
-	{
-		MQObject obj = doc->GetObject(m_iMoveObject);
-		if(obj != NULL && obj->GetVertexRefCount(m_iMoveVertex) > 0){
-			MQPoint pos = obj->GetVertex(m_iMoveVertex);
-
-			MQHandleMaterial handle_mat;
-			MQHandleInfo info(scene, pos);
-			info.active = (MQHandleInfo::AxisType)m_ActiveHandle;
-			MQHandleObject handle;
-			handle.CreateMoveHandle(this, true, doc, info, &handle_mat);		
-		}
-	}
-
-	// Highlight the vertex.
-	// 頂点をハイライト描画
-	if (m_iHighlightObject != -1 && m_iHighlightVertex != -1)
-	{
-		MQObject obj = doc->GetObject(m_iHighlightObject);
-		if (obj == NULL) return; // あり得ないはずだが、念のためNULLチェック
-
-		// Calculate the position of the vertex.
-		// 頂点位置を計算
-		MQPoint sp = scene->Convert3DToScreen(obj->GetVertex(m_iHighlightVertex));
-		MQPoint newvp = scene->ConvertScreenTo3D(MQPoint(sp.x,sp.y,scene->GetFrontZ()));
-
-		// Create a drawing object.
-		// 描画オブジェクトを生成
-		int vertex[1];
-		MQObject draw = CreateDrawingObject(doc, DRAW_OBJECT_POINT);
-		draw->SetColor(MQColor(1,1,0));
-		draw->SetColorValid(TRUE);
-		vertex[0] = draw->AddVertex(newvp);
-		draw->AddFace(1, vertex);
-
-		for (auto q : Quad)
-		{
-			if (q >= 0)
-			{
-				draw->AddVertex(obj->GetVertex(q));
-			}
-		}
-	}
-
 
 	MQObject drawEdge = CreateDrawingObject(doc, DRAW_OBJECT_LINE);
 
@@ -550,85 +486,7 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 //---------------------------------------------------------------------------
 BOOL SingleMovePlugin::OnLeftButtonDown(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
 {
-	MQPoint clickpos((float)state.MousePos.x, (float)state.MousePos.y, 0);
-	float mindis2 = 10*10; //10ピクセル以内
-
-	// It gets edit options.
-	// 編集オプションを取得
-	EDIT_OPTION option;
-	GetEditOption(option);
-
-	if(m_bShowHandle)
-	{
-		MQObject obj = doc->GetObject(m_iMoveObject);
-		if(obj != NULL && obj->GetVertexRefCount(m_iMoveVertex) > 0){
-			MQPoint center = obj->GetVertex(m_iMoveVertex);
-			MQHandleInfo info(scene, center);
-			MQPoint hit_pos;
-			m_MoveHandle = MQHandleObject::HitTestMoveHandle(this, doc, scene, state, info, hit_pos);
-			if(m_MoveHandle != MQHandleInfo::HandleNone){
-				m_HandleOperation.Begin(this, info, m_MoveHandle, state.MousePos, hit_pos);
-				m_HandleOffset = MQPoint(0,0,0);
-				return TRUE;
-			}
-		}
-	}
-
-	m_iMoveObject = -1;
-	m_iMoveVertex = -1;
-	m_bShowHandle = false;
-	m_MoveHandle = MQHandleInfo::HandleNone;
-	m_bMoved = false;
-	m_SelectOperation.Clear();
-
-	// Find a nearest vertex from the clicked position.
-	// クリックされた位置に最も近い頂点を見つける
-	int numObj = doc->GetObjectCount();
-	for (int oi=0; oi<numObj; oi++)
-	{
-		MQObject obj = doc->GetObject(oi);
-		if (obj == NULL) continue;
-
-		// An invisible or locked object is not moved.
-		// 非表示またはロックされていれば対象外
-		if (!obj->GetVisible() || obj->GetLocking()) continue;
-
-		// It edits a current object only.
-		// カレントオブジェクトのみ編集
-		if (option.CurrentObjectOnly && oi != doc->GetCurrentObjectIndex())
-			continue;
-
-		int numVertex = obj->GetVertexCount();
-		for (int vi=0; vi<numVertex; vi++)
-		{
-			if (obj->GetVertexRefCount(vi) != 0)
-			{
-				// Is the vertex closed to the clicked position?
-				// クリックされた位置に近いかどうか
-				MQPoint sp = scene->Convert3DToScreen(obj->GetVertex(vi));
-				float dis2 = (sp.x-clickpos.x)*(sp.x-clickpos.x) + (sp.y-clickpos.y)*(sp.y-clickpos.y);
-				if (mindis2 > dis2){
-					// It will move this vertex.
-					// この頂点を移動対象に
-					mindis2 = dis2;
-					m_iMoveObject = oi;
-					m_iMoveVertex = vi;
-					m_ScreenPos = sp;
-				}
-			}
-		}
-	}
-
-	if(m_iMoveObject == -1){
-		if(option.SelectRect){
-			m_SelectOperation.Begin(MQSelectOperation::SELECT_RECT, state.MousePos);
-		}
-		if(option.SelectRope){
-			m_SelectOperation.Begin(MQSelectOperation::SELECT_ROPE, state.MousePos);
-		}
-	}
-
-	if (Quad[0] > -1 && Quad[1] > -1 && Quad[2] > -1 && Quad[3] > -1)
+	if ( Quad[0] > -1 && Quad[1] > -1 && Quad[2] > -1 && Quad[3] > -1)
 	{
 		MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
 
@@ -665,11 +523,12 @@ BOOL SingleMovePlugin::OnLeftButtonDown(MQDocument doc, MQScene scene, MOUSE_BUT
 
 		RedrawAllScene();
 		UpdateUndo(L"Auto Quad");
+		return TRUE;
 	}
 
 	// It returns TRUE because an original action was done. A default action will be ignored.
 	// 標準動作の代わりに独自処理を行ったのでTRUEを返す
-	return TRUE;
+	return FALSE;
 }
 
 
@@ -679,52 +538,7 @@ BOOL SingleMovePlugin::OnLeftButtonDown(MQDocument doc, MQScene scene, MOUSE_BUT
 //---------------------------------------------------------------------------
 BOOL SingleMovePlugin::OnLeftButtonMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
 {
-	if (m_iMoveObject != -1 && m_iMoveVertex != -1)
-	{
-		MQObject obj = doc->GetObject(m_iMoveObject);
-		if (obj == NULL) return TRUE; // あり得ないはずだが、念のためNULLチェック
-
-		// 編集オプションを取得
-		EDIT_OPTION option;
-		GetEditOption(option);
-
-		MQPoint vp;
-		if(m_MoveHandle != MQHandleInfo::HandleNone){
-			MQPoint offset = m_HandleOffset;
-			m_HandleOperation.Move(offset, scene, state.MousePos);
-			
-			MQPoint np = obj->GetVertex(m_iMoveVertex) + offset;
-			GET_SNAP_PARAM snap_param;
-			snap_param.IgnoreSelected = TRUE;
-			snap_param.SnapEyeDir = (m_MoveHandle == MQHandleInfo::HandleW);
-			vp = GetSnappedPos(scene, np, option, snap_param); // グリッドへの吸着
-			m_HandleOffset = np - vp;
-			obj->SetVertex(m_iMoveVertex, vp);
-		}else{
-			// 頂点を移動（スクリーン座標のZはそのままでX/Yのみ動かす）
-			vp = scene->ConvertScreenTo3D(MQPoint((float)state.MousePos.x, (float)state.MousePos.y, m_ScreenPos.z));
-			GET_SNAP_PARAM snap_param;
-			snap_param.IgnoreSelected = TRUE;
-			snap_param.SnapEyeDir = TRUE;
-			vp = GetSnappedPos(scene, vp, option, snap_param); // グリッドへの吸着
-			obj->SetVertex(m_iMoveVertex, vp);
-		}
-
-		// 再描画
-		RedrawScene(scene);
-
-		// 移動済みチェック
-		m_bMoved = true;
-		m_MovedPos = vp;
-	}
-	else if(m_SelectOperation.GetType() != MQSelectOperation::SELECT_NONE)
-	{
-		m_SelectOperation.Move(state.MousePos);
-	}
-
-	// It returns TRUE because an original action was done. A default action will be ignored.
-	// 標準動作の代わりに独自処理を行ったのでTRUEを返す
-	return TRUE;
+	return FALSE;
 }
 
 
@@ -734,61 +548,7 @@ BOOL SingleMovePlugin::OnLeftButtonMove(MQDocument doc, MQScene scene, MOUSE_BUT
 //---------------------------------------------------------------------------
 BOOL SingleMovePlugin::OnLeftButtonUp(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
 {
-	if (m_iMoveObject != -1 && m_iMoveVertex != -1)
-	{
-		if(m_bMoved)
-		{
-			// Redraw a scene and update an undo if a vertex was moved.
-			// 頂点が移動された場合、再描画とアンドゥの更新を行う
-			RedrawAllScene();
-			UpdateUndo(L"SingleMove");
-
-			// Send a message to StationSpy plug-in.
-			// StationSpyプラグインにメッセージを送る
-			char buf[128];
-			sprintf_s(buf, sizeof(buf), "Moved to (%.3f %.3f %.3f)", m_MovedPos.x, m_MovedPos.y, m_MovedPos.z);
-			int ret = SendUserMessage(doc, 0x56A31D20, 0x9CE001E3, "text", buf);
-			sprintf_s(buf, sizeof(buf), "Received %d from SendUserMessage()\n", ret);
-			OutputDebugString(buf);
-		}
-		else
-		{
-			// Show a handle.
-			// ハンドルを表示
-			if(m_bUseHandle){
-				m_bShowHandle = true;
-				RedrawAllScene();
-			}
-		}
-	}
-	else if(m_SelectOperation.GetType() != MQSelectOperation::SELECT_NONE)
-	{
-		// Select vertices. (The selection does not affect to the movement, just a sample)
-		// 頂点を選択（移動操作には影響しないが、単なるサンプル）
-		int obj_index = doc->GetCurrentObjectIndex();
-		MQObject obj = doc->GetObject(obj_index);
-		if(obj != NULL){
-			int num = obj->GetVertexCount();
-			for(int i=0; i<num; i++){
-				if(obj->GetVertexRefCount(i) > 0){
-					MQPoint p = scene->Convert3DToScreen(obj->GetVertex(i));
-					if(p != MQPoint(0,0,0)){
-						if(m_SelectOperation.IsInside(p)){
-							doc->AddSelectVertex(obj_index, i);
-						}else{
-							doc->DeleteSelectVertex(obj_index, i);
-						}
-					}
-				}
-			}
-		}
-		m_SelectOperation.Finish();
-		RedrawAllScene();
-	}
-
-	// It returns TRUE because an original action was done. A default action will be ignored.
-	// 標準動作の代わりに独自処理を行ったのでTRUEを返す
-	return TRUE;
+	return FALSE;
 }
 
 
@@ -799,81 +559,7 @@ BOOL SingleMovePlugin::OnLeftButtonUp(MQDocument doc, MQScene scene, MOUSE_BUTTO
 //---------------------------------------------------------------------------
 BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
 {
-	float mindis2 = 10 * 10; //10ピクセル以内
-
-	int newoi = -1;
-	int newvi = -1;
 	bool redraw = false;
-
-	// It gets edit options.
-	// 編集オプションを取得
-	EDIT_OPTION option;
-	GetEditOption(option);
-
-	MQHandleInfo::AxisType active_handle = MQHandleInfo::HandleNone;
-	if (m_bShowHandle)
-	{
-		MQObject obj = doc->GetObject(m_iMoveObject);
-		if (obj != NULL && obj->GetVertexRefCount(m_iMoveVertex) > 0) {
-			MQPoint center = obj->GetVertex(m_iMoveVertex);
-			MQHandleInfo info(scene, center);
-			MQPoint hit_pos;
-			active_handle = MQHandleObject::HitTestMoveHandle(this, doc, scene, state, info, hit_pos);
-		}
-	}
-	if (m_ActiveHandle != active_handle) {
-		m_ActiveHandle = active_handle;
-		redraw = true;
-	}
-
-	if (m_ActiveHandle == MQHandleInfo::HandleNone)
-	{
-		// Find a nearest vertex from the mouse cursor.
-		// カーソル位置に最も近い頂点を見つける
-		int numObj = doc->GetObjectCount();
-		for (int oi = 0; oi < numObj; oi++)
-		{
-			MQObject obj = doc->GetObject(oi);
-			if (obj == NULL) continue;
-
-			// An invisible or locked object is not moved.
-			// 非表示またはロックされていれば対象外
-			if (!obj->GetVisible() || obj->GetLocking()) continue;
-
-			// It edits a current object only.
-			// カレントオブジェクトのみ編集
-			if (option.CurrentObjectOnly && oi != doc->GetCurrentObjectIndex())
-				continue;
-
-			int numVertex = obj->GetVertexCount();
-			for (int vi = 0; vi < numVertex; vi++)
-			{
-				if (obj->GetVertexRefCount(vi) != 0)
-				{
-					// Is the vertex closed to the cursor position?
-					// カーソル位置に近いかどうか
-					MQPoint sp = scene->Convert3DToScreen(obj->GetVertex(vi));
-					float dis2 = (sp.x - state.MousePos.x)*(sp.x - state.MousePos.x) + (sp.y - state.MousePos.y)*(sp.y - state.MousePos.y);
-					if (mindis2 > dis2) {
-						// It will move this vertex.
-						// この頂点を移動対象に
-						mindis2 = dis2;
-						newoi = oi;
-						newvi = vi;
-					}
-				}
-			}
-		}
-	}
-
-	// Redraw a scene when the cursor is on the different vertex from the previous time.
-	// 前回と違う頂点上にカーソルがきた場合は再描画
-	if (m_iHighlightObject != newoi || m_iHighlightVertex != newvi)
-	{
-		m_iHighlightObject = newoi;
-		m_iHighlightVertex = newvi;
-		redraw = true;
-	}
 
 	auto mouse_pos = MQPoint((float)state.MousePos.x, (float)state.MousePos.y, 0);
 	MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
@@ -983,13 +669,13 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 		Quad[2] = -1;
 		Quad[3] = -1;
 	}
-
+/*
 	if(m_ActiveHandle == MQHandleInfo::HandleNone && m_iHighlightVertex != -1){
 		SetMouseCursor(m_MoveCursor);
 	}else{
 		SetMouseCursor(GetResourceCursor(MQCURSOR_DEFAULT));
 	}
-
+*/
 	if(redraw){
 		RedrawScene(scene);
 	}
