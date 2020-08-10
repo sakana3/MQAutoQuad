@@ -22,30 +22,56 @@ HINSTANCE g_hInstance;
       }
 
 
-class MQBorders
+class SceneChash
 {
 public:
+	class Scene
+	{
+	public:
+		MQObject obj;
+		std::vector<MQPoint> verts;
+		std::vector<MQPoint> coords;
+		std::vector<bool> in_screen;
+
+		Scene() {}
+		Scene(const Scene& screen)
+		{
+			obj = screen.obj;
+			verts = screen.verts;
+			coords = screen.coords;
+			in_screen = screen.in_screen;
+		}
+
+		Scene(MQObject obj, MQScene scene)
+		{
+			this->obj = obj;
+			int numVertex = obj->GetVertexCount();
+			verts = std::vector<MQPoint>(numVertex);
+			coords = std::vector<MQPoint>(numVertex);
+			in_screen = std::vector<bool>(numVertex);
+			obj->GetVertexArray(verts.data());
+			for (int i = 0; i < numVertex; i++)
+			{
+				float w = 0.0f;
+				coords[i] = scene->Convert3DToScreen(verts[i], &w);
+				in_screen[i] = w > 0;
+			}
+		}
+
+	};
+
 	typedef std::pair<int, int> tedge;
-	std::vector<tedge> edges;
-	std::vector<int> verts;
+	std::map<MQScene, Scene> scenes;
+	std::vector<tedge> border_edges;
+	std::vector<int> border_verts;
+	MQObject obj = NULL;
 
-	MQBorders()
-	{
-
-	}
-
-	MQBorders( const MQBorders& border)
-	{
-		edges = border.edges;
-		verts = border.verts;
-	}
-
-	MQBorders(MQScene scene , MQObject obj )
+	void UpdateBorder(MQScene scene, MQObject obj)
 	{
 		//フェイスのエッジのリストアップ
 		auto fcnt = obj->GetFaceCount();
-		std::map<tedge,int> edgemap;
-		for(int fi = 0; fi < fcnt ; fi++)
+		std::map<tedge, int> edgemap;
+		for (int fi = 0; fi < fcnt; fi++)
 		{
 			auto pcnt = obj->GetFacePointCount(fi);
 			int* points = (int*)alloca(sizeof(int) * pcnt);
@@ -57,7 +83,7 @@ public:
 				tedge edge = (e0 > e1) ? tedge(e1, e0) : tedge(e0, e1);
 				edgemap[edge] = true;
 			}
-			else if( pcnt > 2 )
+			else if (pcnt > 2)
 			{
 				for (int ie = 0; ie < pcnt; ie++)
 				{
@@ -80,47 +106,118 @@ public:
 			}
 		}
 		// ボーダーエッジを抽出
-		edges.clear();
-		edges.reserve(edgemap.size());
+		border_edges.clear();
+		border_edges.reserve(edgemap.size());
 		for (const auto& edge : edgemap)
 		{
 			if (edge.second)
 			{
-				edges.push_back(edge.first);
+				border_edges.push_back(edge.first);
 			}
 		}
 
 		//ボーダー頂点の抽出
 		std::set<int> vertset;
-		for (const auto& edge : edges)
+		for (const auto& edge : border_edges)
 		{
 			vertset.insert(edge.first);
 			vertset.insert(edge.second);
 		}
-		verts.clear();
-		verts.reserve(vertset.size());
+		border_verts.clear();
+		border_verts.reserve(vertset.size());
 		for (const int vert : vertset)
 		{
-			verts.push_back(vert);
+			border_verts.push_back(vert);
 		}
+	}
+
+	const Scene& Get(MQScene scene, MQObject obj)
+	{
+		if (this->obj == NULL)
+		{
+			UpdateBorder(scene, obj);
+		}
+		this->obj = obj;
+		if (scenes.find(scene) == scenes.end())
+		{
+			scenes[scene] = Scene(obj, scene);
+		}
+		return scenes[scene];
+	}
+
+	void Clear( bool screen_only = false)
+	{
+		if (!screen_only)
+		{
+			border_edges.clear();
+			border_verts.clear();
+		}
+		scenes.clear();
+		this->obj = NULL;
 	}
 };
 
-double LEN( const MQPoint2& a, const MQPoint2& b)
+
+
+double LEN(const MQPoint2& a, const MQPoint2& b)
 {
 	double dx = (a.x - b.x);
 	double dy = (a.y - b.y);
 	return (dx * dx) + (dy * dy);
 }
 
-MQPoint2 CENTER(const MQPoint2& a, const MQPoint2& b , const MQPoint2& c )
+MQPoint2 CENTER(const MQPoint2& a, const MQPoint2& b, const MQPoint2& c)
 {
 	double dx = (a.x - b.x);
 	double dy = (a.y - b.y);
 	return (a + b + c) / 3.0f;
 }
 
-std::vector<int>  MakeQuad(const std::vector<int>& quad, const std::vector< MQPoint >& points)
+float ANGLE(const MQPoint2& p )
+{
+	float angle = acos(p.x / sqrt( p.x*p.x + p.y * p.y));
+	angle = angle * 180.0f / PI;
+	if (p.y<0)angle = 360.0f - angle;
+	return angle;
+}
+
+
+std::vector<int>  MakeQuad(const std::vector<int>& quad, const std::vector< MQPoint >& points, const std::vector< MQPoint >& coords , const MQPoint& pivot)
+{
+
+//	angle = acos(x / sqrt(x*x + y * y));
+//	angle = angle * 180.0 / PI;
+//	if (y<0)angle = 360.0 - angle;
+	std::vector< std::pair< int , float > > temp;
+	temp.reserve(quad.size());
+	for (auto q : quad)
+	{
+		auto p = coords[q] - pivot;
+		float angle = acos(p.x / sqrt(p.x*p.x + p.y * p.y));
+		angle = angle * 180.0f / PI;
+		if (p.y<0)angle = 360.0f - angle;
+		temp.push_back(std::pair< int, float >(q, angle));
+	}
+
+
+	std::sort(
+		temp.begin(),
+		temp.end(),
+		[](const auto& lhs, const auto& rhs) { return lhs.second > rhs.second; }
+	);
+
+	std::vector<int> ret;
+	ret.reserve(quad.size());
+	for ( const auto& t : temp)
+	{
+		ret.push_back(t.first);
+	}
+
+	return ret;
+}
+
+
+std::vector<int>  MakeQuad2(const std::vector<int>& quad, const std::vector< MQPoint >& points, const std::vector< MQPoint >& coords, const MQPoint& pivot)
 {
 	std::vector<int> temp(quad);
 	std::sort(temp.begin(), temp.end());
@@ -136,7 +233,7 @@ std::vector<int>  MakeQuad(const std::vector<int>& quad, const std::vector< MQPo
 	auto n320 = GetNormal(points[q3], points[q2], points[q0]);
 
 	std::vector<int> result(4);
-	if (GetInnerProduct(n012, n230) > GetInnerProduct(n012, n320) )
+	if (GetInnerProduct(n012, n230) > GetInnerProduct(n012, n320))
 	{
 		result[0] = q0;
 		result[1] = q1;
@@ -170,10 +267,10 @@ MQPoint2 CalcProjection(const MQPoint& qp, const MQMatrix& m)
 		return MQPoint2(x, y);
 	}
 
-	return MQPoint2( -0 , -0 );
+	return MQPoint2(-0, -0);
 }
 
-int IntersectLineAndLine( const MQPoint &a, const MQPoint &b, const MQPoint &c, const MQPoint &d)
+int IntersectLineAndLine(const MQPoint &a, const MQPoint &b, const MQPoint &c, const MQPoint &d)
 {
 	float s, t;
 	s = (a.x - b.x) * (c.y - a.y) - (a.y - b.y) * (c.x - a.x);
@@ -189,9 +286,9 @@ int IntersectLineAndLine( const MQPoint &a, const MQPoint &b, const MQPoint &c, 
 }
 
 
-bool PointInTriangle( const MQPoint& p , const MQPoint& v1 , const MQPoint& v2 , const MQPoint& v3 )
+bool PointInTriangle(const MQPoint& p, const MQPoint& v1, const MQPoint& v2, const MQPoint& v3)
 {
-	#define CROSS(p1,p2,p3) ((p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y))
+#define CROSS(p1,p2,p3) ((p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y))
 	bool b1 = CROSS(p, v1, v2) < 0.0f;
 	bool b2 = CROSS(p, v2, v3) < 0.0f;
 	bool b3 = CROSS(p, v3, v1) < 0.0f;
@@ -245,6 +342,19 @@ public:
 
 	std::vector<int> FindMirror(MQObject obj, const std::vector<MQPoint>& verts, const std::vector<int>& face, float SymmetryDistance);
 
+	// アンドゥ実行時
+	virtual BOOL OnUndo(MQDocument doc, int undo_state) { screenChash.Clear(); return FALSE; }
+	// リドゥ実行時
+	virtual BOOL OnRedo(MQDocument doc, int redo_state) { screenChash.Clear(); return FALSE; }
+	// アンドゥ状態更新時
+	virtual void OnUpdateUndo(MQDocument doc, int undo_state, int undo_size) { screenChash.Clear(); }
+	// オブジェクトの編集時
+	virtual void OnObjectModified(MQDocument doc) { screenChash.Clear(); }
+	// カレントオブジェクトの変更時
+	virtual void OnUpdateObjectList(MQDocument doc) { screenChash.Clear(); }
+	// シーン情報の変更時
+	virtual void OnUpdateScene(MQDocument doc, MQScene scene) { screenChash.Clear(true); }
+
 private:
 	bool m_bActivated;
 	bool m_bUseHandle;
@@ -252,7 +362,7 @@ private:
 
 	std::vector<int> Quad;
 	std::vector<int> Mirror;
-	MQBorders borders;
+	SceneChash screenChash;
 
 	HCURSOR m_MoveCursor;
 };
@@ -277,7 +387,7 @@ void SingleMovePlugin::GetPlugInID(DWORD *Product, DWORD *ID)
 	// プロダクト名(制作者名)とIDを、全部で64bitの値として返す
 	// 値は他と重複しないようなランダムなもので良い
 	*Product = 0xA0E090AD;
-	*ID      = 0x444490AD;
+	*ID = 0x444490AD;
 }
 
 
@@ -309,7 +419,7 @@ BOOL SingleMovePlugin::Initialize()
 {
 	// Load a cursor.
 	// カーソルをロード
-	if(m_MoveCursor == NULL){
+	if (m_MoveCursor == NULL) {
 		m_MoveCursor = LoadCursor(g_hInstance, MAKEINTRESOURCE(IDC_CURSOR1));
 	}
 
@@ -331,7 +441,7 @@ void SingleMovePlugin::Exit()
 BOOL SingleMovePlugin::Activate(MQDocument doc, BOOL flag)
 {
 	m_bActivated = flag ? true : false;
-	
+	screenChash.Clear();
 	// It returns 'flag' as it is.
 	// そのままflagを返す
 	return flag;
@@ -344,15 +454,17 @@ BOOL SingleMovePlugin::Activate(MQDocument doc, BOOL flag)
 //---------------------------------------------------------------------------
 void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int height)
 {
-	if(!m_bActivated) return;
-
-	MQObject drawEdge = CreateDrawingObject(doc, DRAW_OBJECT_LINE);
+	if (!m_bActivated) return;
 
 	MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
-	for ( const auto& edge : borders.edges)
+
+	/*
+	MQObject drawEdge = CreateDrawingObject(doc, DRAW_OBJECT_LINE);
+
+	for (const auto& edge : screenChash.border_edges)
 	{
-		MQPoint p0 = obj->GetVertex( edge.first );
-		MQPoint p1 = obj->GetVertex( edge.second );
+		MQPoint p0 = obj->GetVertex(edge.first);
+		MQPoint p1 = obj->GetVertex(edge.second);
 
 		drawEdge->SetColor(MQColor(1, 1, 0));
 		drawEdge->SetColorValid(TRUE);
@@ -362,10 +474,10 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 		newface[1] = drawEdge->AddVertex(p1);
 		drawEdge->AddFace(2, newface);
 	}
-
-	if ( !Quad.empty() )
+	*/
+	if (!Quad.empty())
 	{
-		MQObject drawQuad = CreateDrawingObject(doc, DRAW_OBJECT_FACE );
+		MQObject drawQuad = CreateDrawingObject(doc, DRAW_OBJECT_FACE);
 		int iMaterial;
 		auto mat = CreateDrawingMaterial(doc, iMaterial);
 		mat->SetShader(MQMATERIAL_SHADER_CONSTANT);
@@ -378,13 +490,13 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 		std::vector<int> newface;
 		for (auto q : Quad)
 		{
-			newface.push_back( drawQuad->AddVertex(obj->GetVertex( q ) ));
+			newface.push_back(drawQuad->AddVertex(obj->GetVertex(q)));
 		}
-		auto iFace = drawQuad->AddFace( (int)newface.size(), newface.data() );
+		auto iFace = drawQuad->AddFace((int)newface.size(), newface.data());
 		drawQuad->SetFaceMaterial(iFace, iMaterial);
 
 		std::reverse(newface.begin(), newface.end());
-		iFace = drawQuad->AddFace((int)newface.size(), newface.data() );
+		iFace = drawQuad->AddFace((int)newface.size(), newface.data());
 		drawQuad->SetFaceMaterial(iFace, iMaterial);
 
 		if (Quad.size() == Mirror.size())
@@ -435,6 +547,7 @@ BOOL SingleMovePlugin::OnLeftButtonDown(MQDocument doc, MQScene scene, MOUSE_BUT
 
 		RedrawAllScene();
 		UpdateUndo(L"Auto Quad");
+		screenChash.Clear();
 		return TRUE;
 	}
 
@@ -479,7 +592,7 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 	HIT_TEST_PARAM param;
 	std::vector<MQObject> objlist;
 	objlist.push_back(obj);
-	this->HitTestObjects(scene, state.MousePos , objlist, param);
+	this->HitTestObjects(scene, state.MousePos, objlist, param);
 
 	std::vector<int> new_quad;
 	std::vector<int> new_mirror;
@@ -497,14 +610,14 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 		redraw = true;
 	}
 
-/*
+	/*
 	if(m_ActiveHandle == MQHandleInfo::HandleNone && m_iHighlightVertex != -1){
-		SetMouseCursor(m_MoveCursor);
+	SetMouseCursor(m_MoveCursor);
 	}else{
-		SetMouseCursor(GetResourceCursor(MQCURSOR_DEFAULT));
+	SetMouseCursor(GetResourceCursor(MQCURSOR_DEFAULT));
 	}
-*/
-	if(redraw){
+	*/
+	if (redraw) {
 		RedrawScene(scene);
 	}
 
@@ -513,31 +626,26 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 	return FALSE;
 }
 
-std::pair< std::vector<int> , std::vector<int> > SingleMovePlugin::FindQuad(MQDocument doc, MQScene scene, const MQPoint& mouse_pos)
+
+
+std::pair< std::vector<int>, std::vector<int> > SingleMovePlugin::FindQuad(MQDocument doc, MQScene scene, const MQPoint& mouse_pos)
 {
 	MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
 
-	// ボーダーエッジ抽出
-	borders = MQBorders(scene, obj);
+	//スクリーン変換
+	auto screen = screenChash.Get(scene, obj);
 
 	// 頂点の射影変換
 	typedef std::pair<int, float> pair;
 	int numVertex = obj->GetVertexCount();
-	auto verts = std::vector<MQPoint>(numVertex);
-	auto coords = std::vector<MQPoint>(numVertex);
-	obj->GetVertexArray(verts.data());
-
 	auto vertset = std::vector< pair >();
-	for (int vi : borders.verts)
+	vertset.reserve(numVertex);
+	for (int vi : screenChash.border_verts)
 	{
-		float w = 0.0f;
-		auto coord = scene->Convert3DToScreen(verts[vi], &w);
-		coords[vi] = coord;
-
-		if (w > 0.0f)
+		if (screen.in_screen[vi])
 		{
-			float dx = mouse_pos.x - coords[vi].x;
-			float dy = mouse_pos.y - coords[vi].y;
+			float dx = mouse_pos.x - screen.coords[vi].x;
+			float dy = mouse_pos.y - screen.coords[vi].y;
 			float dist = dx * dx + dy * dy;
 			vertset.push_back(pair(vi, dist));
 		}
@@ -554,12 +662,12 @@ std::pair< std::vector<int> , std::vector<int> > SingleMovePlugin::FindQuad(MQDo
 	for (const pair& t : vertset)
 	{
 		auto v = t.first;
-		auto p = coords[v];
+		auto p = screen.coords[v];
 
 		bool isHitOtherEdge = false;
-		for (const std::pair<int, int>& border : borders.edges)
+		for (const std::pair<int, int>& border : screenChash.border_edges)
 		{
-			if (IntersectLineAndLine(mouse_pos, p, coords[border.first], coords[border.second]))
+			if (IntersectLineAndLine(mouse_pos, p, screen.coords[border.first], screen.coords[border.second]))
 			{
 				if (border.first != v && border.second != v)
 				{
@@ -573,8 +681,8 @@ std::pair< std::vector<int> , std::vector<int> > SingleMovePlugin::FindQuad(MQDo
 			new_quad.push_back(t.first);
 			if (new_quad.size() >= 4)
 			{
-				auto tmp_quad = MakeQuad(new_quad, verts);
-				if (PointInQuad(mouse_pos, coords[tmp_quad[0]], coords[tmp_quad[1]], coords[tmp_quad[2]], coords[tmp_quad[3]]))
+				auto tmp_quad = MakeQuad(new_quad, screen.verts, screen.coords , mouse_pos);
+				if (PointInQuad(mouse_pos, screen.coords[tmp_quad[0]], screen.coords[tmp_quad[1]], screen.coords[tmp_quad[2]], screen.coords[tmp_quad[3]]))
 				{
 					new_quad = tmp_quad;
 					break;
@@ -597,8 +705,8 @@ std::pair< std::vector<int> , std::vector<int> > SingleMovePlugin::FindQuad(MQDo
 			{
 				auto e0 = new_quad[i];
 				auto e1 = new_quad[(i + 1) % new_quad.size()];
-				std::pair<int, int> edge = (e0<e1)?std::pair<int, int>(e0, e1): std::pair<int, int>(e1, e0);
-				if (std::find(borders.edges.begin(), borders.edges.end(), edge) == borders.edges.end())
+				std::pair<int, int> edge = (e0<e1) ? std::pair<int, int>(e0, e1) : std::pair<int, int>(e1, e0);
+				if (std::find(screenChash.border_edges.begin(), screenChash.border_edges.end(), edge) == screenChash.border_edges.end())
 				{
 					new_quad.clear();
 					break;
@@ -611,23 +719,23 @@ std::pair< std::vector<int> , std::vector<int> > SingleMovePlugin::FindQuad(MQDo
 		}
 	}
 
-	if(!new_quad.empty())
+	if (!new_quad.empty())
 	{
 		EDIT_OPTION option;
 		GetEditOption(option);
 		if (option.Symmetry)
 		{
-			mirror = FindMirror(obj, verts, new_quad, option.SymmetryDistance);
+			mirror = FindMirror(obj, screen.verts, new_quad, option.SymmetryDistance);
 		}
 	}
 
-	return std::pair< std::vector<int>, std::vector<int> >( new_quad , mirror );
+	return std::pair< std::vector<int>, std::vector<int> >(new_quad, mirror);
 }
 
 
-int SingleMovePlugin::AddFace(MQScene scene, MQObject obj,  std::vector<int> verts, int iMaterial)
+int SingleMovePlugin::AddFace(MQScene scene, MQObject obj, std::vector<int> verts, int iMaterial)
 {
-	auto face = obj->AddFace( (int)verts.size(), verts.data());
+	auto face = obj->AddFace((int)verts.size(), verts.data());
 	obj->SetFaceMaterial(face, iMaterial);
 
 	for (int fi = 0; fi < obj->GetFaceCount(); fi++)
@@ -681,11 +789,14 @@ std::vector<int> SingleMovePlugin::FindMirror(MQObject obj, const std::vector<MQ
 		}
 	}
 
-	if (std::find(mirror.begin(), mirror.end(), -1) != mirror.end() )
+	std::set<int> mirror_set(mirror.begin(), mirror.end());
+	std::set<int> poly_set(poly.begin(), poly.end());
+
+	if (std::find(mirror.begin(), mirror.end(), -1) != mirror.end())
 	{
 		mirror.clear();
 	}
-	else if (mirror == poly)
+	else if (mirror_set == poly_set)
 	{
 		mirror.clear();
 	}
@@ -712,14 +823,14 @@ MQBasePlugin *GetPluginClass()
 //---------------------------------------------------------------------------
 //  DllMain
 //---------------------------------------------------------------------------
-BOOL APIENTRY DllMain( HINSTANCE hinstDLL, 
-                       DWORD  ul_reason_for_call, 
-                       LPVOID lpReserved
-					 )
+BOOL APIENTRY DllMain(HINSTANCE hinstDLL,
+	DWORD  ul_reason_for_call,
+	LPVOID lpReserved
+)
 {
-	if(ul_reason_for_call == DLL_PROCESS_ATTACH){
+	if (ul_reason_for_call == DLL_PROCESS_ATTACH) {
 		g_hInstance = hinstDLL;
 	}
-    return TRUE;
+	return TRUE;
 }
 
