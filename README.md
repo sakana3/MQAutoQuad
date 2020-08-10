@@ -5,6 +5,6 @@ AutoQuad for Metasequoia
 面貼りが少し早くなるかも？
 
 ダウンロード  
-https://github.com/sakana3/MQAutoQuad/releases/download/untagged-71eec8b0ab587fda5292/MQAutoQuad.zip  
+https://github.com/sakana3/MQAutoQuad/releases/download/v1.0.0/MQAutoQuad_x64.zip
 32bit版はこちら  
-https://github.com/sakana3/MQAutoQuad/releases/download/untagged-71eec8b0ab587fda5292/MQAutoQuad_win32.zip  
+https://github.com/sakana3/MQAutoQuad/releases/download/v1.0.0/MQAutoQuad_win32.zip
