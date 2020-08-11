@@ -14,7 +14,7 @@ https://github.com/sakana3/MQAutoQuad/releases/download/v1.0.0/MQAutoQuad_x64.zi
 32bit版はこちら  
 https://github.com/sakana3/MQAutoQuad/releases/download/v1.0.0/MQAutoQuad_win32.zip  
 
-- 注意
+- 注意  
 
 ダウンロード時に警告がでるみたいです。  
 変なものは混入してないと思いますがご利用は各人のご判断にお任せします。
