@@ -83,6 +83,9 @@
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(Platform)\$(Configuration)\</IntDir>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <PostBuildEventUseInBuild>false</PostBuildEventUseInBuild>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Midl>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -238,6 +241,29 @@
     <ClInclude Include="..\MQSelectOperation.h" />
     <ClInclude Include="..\MQSetting.h" />
     <ClInclude Include="..\MQWidget.h" />
+    <ClInclude Include="libacc\bvh_tree.h" />
+    <ClInclude Include="libacc\defines.h" />
+    <ClInclude Include="libacc\kd_tree.h" />
+    <ClInclude Include="libacc\math\accum.h" />
+    <ClInclude Include="libacc\math\algo.h" />
+    <ClInclude Include="libacc\math\bezier_curve.h" />
+    <ClInclude Include="libacc\math\bspline.h" />
+    <ClInclude Include="libacc\math\defines.h" />
+    <ClInclude Include="libacc\math\functions.h" />
+    <ClInclude Include="libacc\math\geometry.h" />
+    <ClInclude Include="libacc\math\line.h" />
+    <ClInclude Include="libacc\math\matrix.h" />
+    <ClInclude Include="libacc\math\matrix_qr.h" />
+    <ClInclude Include="libacc\math\matrix_svd.h" />
+    <ClInclude Include="libacc\math\matrix_tools.h" />
+    <ClInclude Include="libacc\math\octree_tools.h" />
+    <ClInclude Include="libacc\math\permute.h" />
+    <ClInclude Include="libacc\math\plane.h" />
+    <ClInclude Include="libacc\math\quaternion.h" />
+    <ClInclude Include="libacc\math\transform.h" />
+    <ClInclude Include="libacc\math\vector.h" />
+    <ClInclude Include="libacc\primitives.h" />
+    <ClInclude Include="MQGeometry.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="cursor1.cur" />
