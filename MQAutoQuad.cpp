@@ -211,15 +211,15 @@ BOOL SingleMovePlugin::Activate(MQDocument doc, BOOL flag)
 {
 	if (flag)
 	{
-		mqSnap = MQSnap( doc );
+		mqSnap.Update(doc);
+		mqGeom.Clear();
 	}
 	else
 	{
-		mqSnap = MQSnap();
+		clear(true, true, true);
 	}
 
 	m_bActivated = flag ? true : false;
-	mqGeom.Clear();
 	// It returns 'flag' as it is.
 	// そのままflagを返す
 	return flag;
@@ -252,7 +252,7 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 	if (!m_bActivated) return;
 
 	MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
-	MQColor color =  GetSystemColor(MQSYSTEMCOLOR_OBJECT);
+	MQColor color =  GetSystemColor(MQSYSTEMCOLOR_TEMP);
 
 #if _DEBUG
 	MQObject drawPoint = CreateDrawingObject(doc, DRAW_OBJECT_POINT);
@@ -291,19 +291,25 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 		halfQuad->SetColor(color);
 		halfQuad->SetColorValid(TRUE);
 
-		int iMaterial;
-		auto mat = CreateDrawingMaterial(doc, iMaterial);
-		mat->SetShader(MQMATERIAL_SHADER_CONSTANT);
-		mat->SetColor(color);
-		mat->SetAlpha(0.25f);
+		int iMaterial0;
+		auto mat0 = CreateDrawingMaterial(doc, iMaterial0);
+		mat0->SetShader(MQMATERIAL_SHADER_CONSTANT);
+		mat0->SetColor(color);
+		mat0->SetAlpha(1.0f);
 
-		DrawFace(scene, drawQuad, obj, Quad, iMaterial);
-		DrawFace(scene, halfQuad, obj, Quad, iMaterial);
+		int iMaterial1;
+		auto mat1 = CreateDrawingMaterial(doc, iMaterial1);
+		mat1->SetShader(MQMATERIAL_SHADER_CONSTANT);
+		mat1->SetColor(color);
+		mat1->SetAlpha(0.25f);
+
+		DrawFace(scene, drawQuad, obj, Quad, iMaterial0);
+		DrawFace(scene, halfQuad, obj, Quad, iMaterial1);
 
 		if (Quad.size() == Mirror.size())
 		{
-			DrawFace(scene, drawQuad, obj, Mirror, iMaterial);
-			DrawFace(scene, halfQuad, obj, Mirror, iMaterial);
+			DrawFace(scene, drawQuad, obj, Mirror, iMaterial0);
+			DrawFace(scene, halfQuad, obj, Mirror, iMaterial1);
 		}
 	}
 }
@@ -417,13 +423,13 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 	std::vector<MQObject> objlist;
 	objlist.push_back(obj);
 	this->HitTestObjects(scene, state.MousePos, objlist, param);
-	bool is_make = true;
-	if (param.HitType != MQCommandPlugin::HIT_TYPE::HIT_TYPE_FACE)
+	bool is_blank_area = true;
+	if (param.HitType == MQCommandPlugin::HIT_TYPE::HIT_TYPE_FACE)
 	{
-		is_make = mqSnap.check_view(scene, param.HitPos);
+		is_blank_area = !mqSnap.check_view(scene, param.HitPos);
 	}
 
-	if (is_make)
+	if (is_blank_area)
 	{
 		auto quads = FindQuad(doc, scene, mouse_pos);
 		new_quad = quads.first;

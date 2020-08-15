@@ -4,10 +4,6 @@
 #include "MQPlugin.h"
 
 
-template<typename T> T* alloca(size_t num)
-{
-	return (T *)alloca( sizeof(T) * num );
-}
 
 struct MQVector
 {
@@ -313,7 +309,7 @@ public:
 		bool is_front( MQScene scene )
 		{
 			int num = verts.size();
-			MQPoint* sp = alloca<MQPoint>( num );
+			MQPoint* sp = (MQPoint*)alloca( sizeof(MQPoint) * num );
 			for (int i = 0; i<num; i++) {
 				sp[i] = scene->Convert3DToScreen( this->verts[i]->co );
 
@@ -394,7 +390,7 @@ public:
 			for (int fi = 0; fi < fcnt; fi++)
 			{
 				auto pcnt = obj->GetFacePointCount(fi);
-				int* points = alloca<int>(pcnt);
+				int* points = (int*)alloca(sizeof(int) * pcnt);
 				obj->GetFacePointArray(fi, points);
 
 				faces[fi].id = fi;
@@ -611,9 +607,9 @@ public:
 				{
 					int triCount = (pcnt - 2);
 					int triSize = triCount * 3;
-					int* is = alloca<int>( pcnt);
-					int* tris = alloca<int>( triSize);
-					MQPoint* points = alloca<MQPoint>(pcnt);
+					int* is = (int*)alloca(sizeof(int) * pcnt);
+					int* tris = (int*)alloca(sizeof(int) * triSize);
+					MQPoint* points = (MQPoint*)alloca(sizeof(MQPoint) * pcnt);
 					obj->GetFacePointArray(fi, is);
 					for (int i = 0; i < pcnt; i++)
 					{

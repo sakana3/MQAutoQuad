@@ -153,7 +153,8 @@
       <TargetMachine>MachineX64</TargetMachine>
     </Link>
     <PostBuildEvent>
-      <Command>robocopy D:\work\mqsdk472\mqsdk\MQAutoQuad\x64\Debug "C:\Program Files\tetraface\Metasequoia4\Plugins\Command" *.dll</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
