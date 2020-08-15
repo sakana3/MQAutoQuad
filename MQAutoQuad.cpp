@@ -65,13 +65,13 @@ std::vector<int>  MakeQuad(const std::vector<int>& quad, const std::vector< MQPo
 }
 
 
-class SingleMovePlugin : public MQCommandPlugin
+class MQAutoQuad : public MQCommandPlugin
 {
 	friend class MQAutoQuadWindow;
 
 public:
 	// コンストラクタ
-	SingleMovePlugin();
+	MQAutoQuad();
 
 	// プラグインIDを返す。
 	virtual void GetPlugInID(DWORD *Product, DWORD *ID);
@@ -149,7 +149,7 @@ private:
 //  SingleMovePlugin::SingleMovePlugin
 //    コンストラクタ
 //---------------------------------------------------------------------------
-SingleMovePlugin::SingleMovePlugin()
+MQAutoQuad::MQAutoQuad()
 {
 	m_bActivated = false;
 }
@@ -158,7 +158,7 @@ SingleMovePlugin::SingleMovePlugin()
 //  SingleMovePlugin::GetPlugInID
 //    プラグインIDを返す。
 //---------------------------------------------------------------------------
-void SingleMovePlugin::GetPlugInID(DWORD *Product, DWORD *ID)
+void MQAutoQuad::GetPlugInID(DWORD *Product, DWORD *ID)
 {
 	// プロダクト名(制作者名)とIDを、全部で64bitの値として返す
 	// 値は他と重複しないようなランダムなもので良い
@@ -171,7 +171,7 @@ void SingleMovePlugin::GetPlugInID(DWORD *Product, DWORD *ID)
 //  SingleMovePlugin::GetPlugInName
 //    プラグイン名を返す。
 //---------------------------------------------------------------------------
-const char *SingleMovePlugin::GetPlugInName(void)
+const char *MQAutoQuad::GetPlugInName(void)
 {
 	return "Auto Quad      by sakana3";
 }
@@ -181,7 +181,7 @@ const char *SingleMovePlugin::GetPlugInName(void)
 //  SingleMovePlugin::EnumString
 //    ボタンに表示される文字列を返す。
 //---------------------------------------------------------------------------
-const wchar_t *SingleMovePlugin::EnumString(void)
+const wchar_t *MQAutoQuad::EnumString(void)
 {
 	return L"Auto Quad";
 }
@@ -190,7 +190,7 @@ const wchar_t *SingleMovePlugin::EnumString(void)
 //  SingleMovePlugin::Initialize
 //    アプリケーションの初期化
 //---------------------------------------------------------------------------
-BOOL SingleMovePlugin::Initialize()
+BOOL MQAutoQuad::Initialize()
 {
 	return TRUE;
 }
@@ -199,7 +199,7 @@ BOOL SingleMovePlugin::Initialize()
 //  SingleMovePlugin::Exit
 //    アプリケーションの終了
 //---------------------------------------------------------------------------
-void SingleMovePlugin::Exit()
+void MQAutoQuad::Exit()
 {
 }
 
@@ -207,7 +207,7 @@ void SingleMovePlugin::Exit()
 //  SingleMovePlugin::Activate
 //    表示・非表示切り替え要求
 //---------------------------------------------------------------------------
-BOOL SingleMovePlugin::Activate(MQDocument doc, BOOL flag)
+BOOL MQAutoQuad::Activate(MQDocument doc, BOOL flag)
 {
 	if (flag)
 	{
@@ -247,7 +247,7 @@ void DrawFace(MQScene scene,MQObject draw , MQObject obj, const std::vector<int>
 //  SingleMovePlugin::OnDraw
 //    描画時の処理
 //---------------------------------------------------------------------------
-void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int height)
+void MQAutoQuad::OnDraw(MQDocument doc, MQScene scene, int width, int height)
 {
 	if (!m_bActivated) return;
 
@@ -320,7 +320,7 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 //  SingleMovePlugin::OnLeftButtonDown
 //    左ボタンが押されたとき
 //---------------------------------------------------------------------------
-BOOL SingleMovePlugin::OnLeftButtonDown(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
+BOOL MQAutoQuad::OnLeftButtonDown(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
 {
 	MQVector mouse_pos = MQPoint((float)state.MousePos.x, (float)state.MousePos.y, 0);
 	MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
@@ -365,7 +365,7 @@ BOOL SingleMovePlugin::OnLeftButtonDown(MQDocument doc, MQScene scene, MOUSE_BUT
 //  SingleMovePlugin::OnLeftButtonMove
 //    左ボタンが押されながらマウスが移動したとき
 //---------------------------------------------------------------------------
-BOOL SingleMovePlugin::OnLeftButtonMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
+BOOL MQAutoQuad::OnLeftButtonMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
 {
 	return FALSE;
 }
@@ -375,7 +375,7 @@ BOOL SingleMovePlugin::OnLeftButtonMove(MQDocument doc, MQScene scene, MOUSE_BUT
 //  SingleMovePlugin::OnLeftButtonUp
 //    左ボタンが離されたとき
 //---------------------------------------------------------------------------
-BOOL SingleMovePlugin::OnLeftButtonUp(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
+BOOL MQAutoQuad::OnLeftButtonUp(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
 {
 	return FALSE;
 }
@@ -386,7 +386,7 @@ BOOL SingleMovePlugin::OnLeftButtonUp(MQDocument doc, MQScene scene, MOUSE_BUTTO
 //  SingleMovePlugin::OnMouseMove
 //    マウスが移動したとき
 //---------------------------------------------------------------------------
-BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
+BOOL MQAutoQuad::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_STATE& state)
 {
 	bool redraw = false;
 	auto mouse_pos = MQPoint((float)state.MousePos.x, (float)state.MousePos.y, 0);
@@ -453,7 +453,7 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 }
 
 
-std::pair< std::vector<int>, std::vector<int> > SingleMovePlugin::FindQuad(MQDocument doc, MQScene scene, const MQPoint& mouse_pos)
+std::pair< std::vector<int>, std::vector<int> > MQAutoQuad::FindQuad(MQDocument doc, MQScene scene, const MQPoint& mouse_pos)
 {
 	//スクリーン変換
 	auto screen = sceneCache.Get(scene, mqGeom.obj );
@@ -569,7 +569,7 @@ std::pair< std::vector<int>, std::vector<int> > SingleMovePlugin::FindQuad(MQDoc
 }
 
 
-int SingleMovePlugin::AddFace(MQScene scene, MQObject obj, std::vector<int> verts, int iMaterial)
+int MQAutoQuad::AddFace(MQScene scene, MQObject obj, std::vector<int> verts, int iMaterial)
 {
 	auto face = obj->AddFace((int)verts.size(), verts.data());
 
@@ -598,7 +598,7 @@ int SingleMovePlugin::AddFace(MQScene scene, MQObject obj, std::vector<int> vert
 	return face;
 }
 
-std::vector<int> SingleMovePlugin::FindMirror(MQObject obj, const std::vector<MQPoint>& verts, const std::vector<int>& poly, float SymmetryDistance)
+std::vector<int> MQAutoQuad::FindMirror(MQObject obj, const std::vector<MQPoint>& verts, const std::vector<int>& poly, float SymmetryDistance)
 {
 	std::vector<int> mirror(poly.size(), -1);
 	auto dist = SymmetryDistance * SymmetryDistance;
@@ -651,7 +651,7 @@ std::vector<int> SingleMovePlugin::FindMirror(MQObject obj, const std::vector<MQ
 //---------------------------------------------------------------------------
 MQBasePlugin *GetPluginClass()
 {
-	static SingleMovePlugin plugin;
+	static MQAutoQuad plugin;
 	return &plugin;
 }
 
