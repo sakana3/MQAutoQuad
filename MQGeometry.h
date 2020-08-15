@@ -3,6 +3,12 @@
 #include "MQ3DLib.h"
 #include "MQPlugin.h"
 
+
+template<typename T> T* alloca(size_t num)
+{
+	return (T *)alloca( sizeof(T) * num );
+}
+
 struct MQVector
 {
 public:
@@ -158,6 +164,16 @@ public:
 		return (a > 0.0f) ? *this / a : MQVector(0, 0, 0);
 	}
 
+	float norm() const
+	{
+		return (float)sqrt(x * x + y * y + z * z);
+	}
+
+	float square_norm() const
+	{
+		return (x * x + y * y + z * z);
+	}
+
 	float dot(const MQVector& p) const
 	{
 		return x * p.x + y * p.y + z * p.z;
@@ -225,7 +241,7 @@ public:
 static_assert(sizeof(MQVector) == sizeof(MQPoint), "size tigai mangana");
 
 
-
+// ジオメトリの隣接情報を構築します。
 class MQGeom
 {
 public:
@@ -297,7 +313,7 @@ public:
 		bool is_front( MQScene scene )
 		{
 			int num = verts.size();
-			std::vector<MQPoint> sp(num);
+			MQPoint* sp = alloca<MQPoint>( num );
 			for (int i = 0; i<num; i++) {
 				sp[i] = scene->Convert3DToScreen( this->verts[i]->co );
 
@@ -378,7 +394,7 @@ public:
 			for (int fi = 0; fi < fcnt; fi++)
 			{
 				auto pcnt = obj->GetFacePointCount(fi);
-				int* points = (int*)alloca(sizeof(int) * pcnt);
+				int* points = alloca<int>(pcnt);
 				obj->GetFacePointArray(fi, points);
 
 				faces[fi].id = fi;
@@ -595,9 +611,9 @@ public:
 				{
 					int triCount = (pcnt - 2);
 					int triSize = triCount * 3;
-					int* is = (int*)alloca(sizeof(int) * pcnt);
-					int* tris = (int*)alloca(sizeof(int) * triSize);
-					MQPoint* points = (MQPoint*)alloca(sizeof(MQPoint) * pcnt);
+					int* is = alloca<int>( pcnt);
+					int* tris = alloca<int>( triSize);
+					MQPoint* points = alloca<MQPoint>(pcnt);
 					obj->GetFacePointArray(fi, is);
 					for (int i = 0; i < pcnt; i++)
 					{
@@ -671,22 +687,38 @@ public:
 			acc::Ray<MQVector> ray;
 			ray.origin = mqray.origin;
 			ray.dir = mqray.vector;
-			ray.tmax = std::numeric_limits<float>::max();
+			ray.tmax = tmin;
 			ray.tmin = 0.0f;
 			MQBVHTree::Hit hit;
 			if (tree.second->bvh_tree->intersect(ray, &hit))
 			{
-				if (tmin > hit.t)
-				{
-					result.position = ray.origin + ray.dir * hit.t;
-					result.t = hit.t;
-					result.is_hit = true;
-					tmin = hit.t;
-				}
+				result.position = ray.origin + ray.dir * hit.t;
+				result.t = hit.t;
+				result.is_hit = true;
+				tmin = hit.t;
 			}
 		}
 
 		return result;
+	}
+
+	Hit colsest_point( const MQVector& p )
+	{
+		Hit hit;
+		hit.t = std::numeric_limits<float>::max();
+		hit.position = p;
+		hit.is_hit = false;
+		for (auto& tree : trees)
+		{
+			auto r = tree.second->bvh_tree->closest_point(p, hit.t);
+			if (r.second < hit.t)
+			{
+				hit.position = r.first;
+				hit.t = r.second;
+				hit.is_hit = true;
+			}
+		}
+		return hit;
 	}
 
 	bool check_view(MQScene scene, const MQPoint& pos, float thrdshold = 0.00001f) const

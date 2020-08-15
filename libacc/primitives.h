@@ -11,7 +11,7 @@
 #define NOMINMAX
 #include <limits>
 
-#include "./math/vector.h"
+//#include "./math/vector.h"
 
 #include "defines.h"
 

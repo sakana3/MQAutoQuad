@@ -85,7 +85,7 @@ private:
         std::atomic<int> * num_threads);
 
     bool intersect(Ray const & ray, typename Node::ID node_id, Hit * hit) const;
-    Vec3fType closest_point(Vec3fType vertex, typename Node::ID node_id) const;
+	Vec3fType closest_point(Vec3fType vertex, typename Node::ID node_id) const;
 
 public:
     static
@@ -110,7 +110,7 @@ public:
         int max_threads = std::thread::hardware_concurrency());
 
     bool intersect(Ray ray, Hit * hit_ptr = nullptr) const;
-    Vec3fType closest_point(Vec3fType vertex, float max_dist = inf) const;
+    std::pair<Vec3fType,float> closest_point(Vec3fType vertex, float max_dist = inf) const;
 };
 
 
@@ -433,10 +433,10 @@ BVHTree<IdxType, Vec3fType>::closest_point(Vec3fType vertex, typename Node::ID n
         }
     }
 
-    return closest;
+	return closest;
 }
 
-template <typename IdxType, typename Vec3fType> Vec3fType
+template <typename IdxType, typename Vec3fType> std::pair<Vec3fType,float>
 BVHTree<IdxType, Vec3fType>::closest_point(Vec3fType vertex, float max_dist) const {
 
     float dist = max_dist * max_dist;
@@ -483,7 +483,7 @@ BVHTree<IdxType, Vec3fType>::closest_point(Vec3fType vertex, float max_dist) con
         }
     }
 
-    return closest;
+    return std::pair<Vec3fType, float>(closest, dist);
 }
 
 ACC_NAMESPACE_END
