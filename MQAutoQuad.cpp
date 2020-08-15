@@ -109,8 +109,9 @@ public:
 		if (isScene || isGeom ) sceneCache.Clear();
 		if (isSnap) mqSnap = MQSnap();
 		if (isGeom || isScene) border.Clear();
-
+#if _DEBUG
 		unk3.clear();
+#endif
 	}
 
 	// アンドゥ実行時
@@ -138,8 +139,9 @@ private:
 	MQSceneCache sceneCache;
 	MQBorderComponent border;
 
-
+#if _DEBUG
 	std::vector<MQPoint> unk3;
+#endif
 };
 
 
@@ -250,8 +252,9 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 	if (!m_bActivated) return;
 
 	MQObject obj = doc->GetObject(doc->GetCurrentObjectIndex());
+	MQColor color =  GetSystemColor(MQSYSTEMCOLOR_OBJECT);
 
-
+#if _DEBUG
 	MQObject drawPoint = CreateDrawingObject(doc, DRAW_OBJECT_POINT);
 	for( const auto& v : unk3  )
 	{
@@ -273,24 +276,25 @@ void SingleMovePlugin::OnDraw(MQDocument doc, MQScene scene, int width, int heig
 		newface[1] = drawEdge->AddVertex(p1);
 		drawEdge->AddFace(2, newface);
 	}
+#endif
 
 	if (!Quad.empty())
 	{
 		MQObject drawQuad = CreateDrawingObject(doc, DRAW_OBJECT_FACE);
 		drawQuad->AddRenderFlag(MQOBJECT_RENDER_ALPHABLEND);
-		drawQuad->SetColor(MQColor(1, 1, 0));
+		drawQuad->SetColor(color);
 		drawQuad->SetColorValid(TRUE);
 
 		MQObject halfQuad = CreateDrawingObject(doc, DRAW_OBJECT_FACE);
 		halfQuad->AddRenderFlag(MQOBJECT_RENDER_ALPHABLEND);
 		halfQuad->AddRenderFlag(MQOBJECT_RENDER_OVERWRITEFACE);
-		halfQuad->SetColor(MQColor(1, 1, 0));
+		halfQuad->SetColor(color);
 		halfQuad->SetColorValid(TRUE);
 
 		int iMaterial;
 		auto mat = CreateDrawingMaterial(doc, iMaterial);
 		mat->SetShader(MQMATERIAL_SHADER_CONSTANT);
-		mat->SetColor(MQColor(1, 1, 0));
+		mat->SetColor(color);
 		mat->SetAlpha(0.25f);
 
 		DrawFace(scene, drawQuad, obj, Quad, iMaterial);
@@ -391,6 +395,7 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 	border.Update(scene, mqGeom.obj);
 	mqSnap.Update(doc);
 
+#if _DEBUG
 	unk3.clear();
 	for (const MQPoint& v : mqGeom.obj->cos )
 	{
@@ -400,7 +405,7 @@ BOOL SingleMovePlugin::OnMouseMove(MQDocument doc, MQScene scene, MOUSE_BUTTON_S
 			unk3.push_back(v);
 		}
 	}
-
+#endif
 
 	std::vector<int> new_quad;
 	std::vector<int> new_mirror;
