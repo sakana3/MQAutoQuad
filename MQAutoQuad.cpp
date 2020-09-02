@@ -16,18 +16,9 @@
 #include <algorithm>
 #include <iostream>
 #include <type_traits>
-#include "libacc\\bvh_tree.h"
 #include "MQGeometry.h"
 
 HINSTANCE g_hInstance;
-
-#define Trace( str, ... ) \
-      { \
-        TCHAR c[4096]; \
-        sprintf_s( c , 4096, str, __VA_ARGS__ ); \
-        OutputDebugString( c ); \
-      }
-
 
 
 std::vector<int>  MakeQuad(const std::vector<int>& quad, const std::vector< MQPoint >& points, const std::vector< MQPoint >& coords , const MQPoint& pivot)
@@ -67,7 +58,7 @@ std::vector<int>  MakeQuad(const std::vector<int>& quad, const std::vector< MQPo
 
 class MQAutoQuad : public MQCommandPlugin
 {
-	friend class MQAutoQuadWindow;
+	friend class MQRetopoWindow;
 
 public:
 	// コンストラクタ
@@ -109,6 +100,9 @@ public:
 		if (isScene || isGeom ) sceneCache.Clear();
 		if (isSnap) mqSnap = MQSnap();
 		if (isGeom || isScene) border.Clear();
+
+		Quad.clear();
+		Mirror.clear();
 #if _DEBUG
 		unk3.clear();
 #endif
@@ -464,10 +458,10 @@ std::pair< std::vector<int>, std::vector<int> > MQAutoQuad::FindQuad(MQDocument 
 	vertset.reserve( mqGeom.obj->verts.size() );
 	for ( const auto vi : border.verts)
 	{
-		if (screen.in_screen[vi->id])
+		if (screen->in_screen[vi->id])
 		{
-			float dx = mouse_pos.x - screen.coords[vi->id].x;
-			float dy = mouse_pos.y - screen.coords[vi->id].y;
+			float dx = mouse_pos.x - screen->coords[vi->id].x;
+			float dy = mouse_pos.y - screen->coords[vi->id].y;
 			float dist = dx * dx + dy * dy;
 			vertset.push_back( pair(vi, dist) );
 		}
@@ -484,7 +478,7 @@ std::pair< std::vector<int>, std::vector<int> > MQAutoQuad::FindQuad(MQDocument 
 	for (const pair& t : vertset)
 	{
 		auto v = t.first;
-		auto p = screen.coords[v->id];
+		auto p = screen->coords[v->id];
 		auto c = v->co;
 
 		if (mqSnap.check_view(scene, c) == false)
@@ -497,12 +491,12 @@ std::pair< std::vector<int>, std::vector<int> > MQAutoQuad::FindQuad(MQDocument 
 		{
 			auto a = border->verts[0];
 			auto b = border->verts[1];
-			if (IntersectLineAndLine(mouse_pos, p, screen.coords[a->id], screen.coords[b->id]))
+			if (IntersectLineAndLine(mouse_pos, p, screen->coords[a->id], screen->coords[b->id]))
 			{
 				if (a->id != v->id && b->id != v->id)
 				{
-					auto pos = IntersectLineAndLinePos(mouse_pos, p, screen.coords[a->id], screen.coords[b->id]);
-					auto ray = MQRay(scene, pos );
+					auto pos = IntersectLineAndLinePos(mouse_pos, p, screen->coords[a->id], screen->coords[b->id]);
+					auto ray = MQRay(scene, MQPoint(pos.x, pos.y,0));
 					auto hit = ray.intersect( MQRay( a->co , b->co - a->co ) );
 					if ( mqSnap.check_view(scene, hit.second ) )
 					{
@@ -517,8 +511,8 @@ std::pair< std::vector<int>, std::vector<int> > MQAutoQuad::FindQuad(MQDocument 
 			new_quad.push_back( v->id );
 			if (new_quad.size() >= 4)
 			{
-				auto tmp_quad = MakeQuad(new_quad, mqGeom.obj->cos, screen.coords , mouse_pos);
-				if (PointInQuad(mouse_pos, screen.coords[tmp_quad[0]], screen.coords[tmp_quad[1]], screen.coords[tmp_quad[2]], screen.coords[tmp_quad[3]]))
+				auto tmp_quad = MakeQuad(new_quad, mqGeom.obj->cos, screen->coords , mouse_pos);
+				if (PointInQuad(mouse_pos, screen->coords[tmp_quad[0]], screen->coords[tmp_quad[1]], screen->coords[tmp_quad[2]], screen->coords[tmp_quad[3]]))
 				{
 					new_quad = tmp_quad;
 					break;

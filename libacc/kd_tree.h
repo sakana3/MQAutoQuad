@@ -16,7 +16,7 @@
 #include <thread>
 #include <algorithm>
 
-#include ".\\math/vector.h"
+//#include ".\\math/vector.h"
 
 #include "defines.h"
 

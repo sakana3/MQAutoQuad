@@ -2,7 +2,35 @@
 
 #include "MQ3DLib.h"
 #include "MQPlugin.h"
+#include "libacc\\bvh_tree.h"
 
+#define MAX_FACE_VERT 100
+
+#define Trace( str, ... ) \
+      { \
+        TCHAR c[4096]; \
+        sprintf_s( c , 4096, str, __VA_ARGS__ ); \
+        OutputDebugString( c ); \
+      }
+
+class TimeTracer
+{
+	std::chrono::system_clock::time_point  start;
+	std::string messga;
+public:
+	TimeTracer(std::string messga = "hoge")
+	{
+		this->messga = messga;
+		start = std::chrono::system_clock::now();
+	}
+
+	~TimeTracer()
+	{
+		auto end = std::chrono::system_clock::now();
+		float elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+		Trace("%s : %f\n", messga.c_str(), elapsed);
+	}
+};
 
 
 struct MQVector
@@ -104,15 +132,15 @@ public:
 	}
 	friend MQVector operator * (const MQVector& p1, const MQVector& p2)
 	{
-		return MQVector(p1.x*p2.x, p1.y*p2.y, p1.z*p2.z);
+		return MQVector(p1.x * p2.x, p1.y * p2.y, p1.z * p2.z);
 	}
 	friend MQVector operator * (const MQVector& p, const float& s)
 	{
-		return MQVector(p.x*s, p.y*s, p.z*s);
+		return MQVector(p.x * s, p.y * s, p.z * s);
 	}
 	friend MQVector operator * (const float& s, const MQVector& p)
 	{
-		return MQVector(p.x*s, p.y*s, p.z*s);
+		return MQVector(p.x * s, p.y * s, p.z * s);
 	}
 	friend MQVector operator / (const MQVector& p, const float& s)
 	{
@@ -142,7 +170,7 @@ public:
 
 	float& operator [](int n) const
 	{
-		return ((float *)&x)[n];
+		return ((float*)&x)[n];
 	}
 
 	operator MQPoint2() const { return MQPoint2(x, y); }
@@ -179,6 +207,13 @@ public:
 	{
 		return (x != NAN && y != NAN && z != NAN);
 	}
+
+	MQVector Lerp(MQVector v, float rate) const
+	{
+		float a = 1.0f - rate;
+		float b = rate;
+		return MQVector(x * a + v.x * b, y * a + v.y * b, z * a + v.z * b);
+	}
 };
 
 
@@ -194,7 +229,7 @@ public:
 		this->vector = vector.normalized();
 	}
 
-	MQRay(MQScene scene, const MQPoint2& position)
+	MQRay(MQScene scene, const MQPoint& position)
 	{
 		MQPoint p0(position.x, position.y, scene->GetFrontZ());
 		MQPoint p1(position.x, position.y, scene->GetFrontZ() + 1);
@@ -234,6 +269,7 @@ public:
 
 };
 
+
 static_assert(sizeof(MQVector) == sizeof(MQPoint), "size tigai mangana");
 
 
@@ -253,15 +289,33 @@ public:
 
 	struct Vert
 	{
-		int id;
+		int id = -1;
 		MQVector co;
 		std::vector<hEdge> link_edges;
 		std::vector<hFace> link_faces;
-		Vert() : id(-1) {}
+		hVert				mirror = NULL;
+		Vert() {}
 		bool is_border() const
 		{
-			std::all_of(link_edges.begin(), link_edges.end(), [](const auto& t) { return t->is_border(); });
+			return std::any_of(link_edges.begin(), link_edges.end(), [](const auto& t) { return t->is_border(); });
 		}
+		bool is_polygon() const
+		{
+			return link_faces.size() > 0;
+		}
+		MQPoint normal() const
+		{
+			MQPoint normal(0, 0, 0);
+			for (auto face : link_faces)
+			{
+				normal += face->corner_normal(this);
+			}
+			normal = normal / link_faces.size();
+			normal.normalize();
+			return normal;
+		}
+		bool is_corner() const { return link_faces.size() == 1; }
+		bool is_convex() const { return std::all_of(link_edges.begin(), link_edges.end(), [](const auto& t) { return !t->is_border(); }); }
 	};
 	struct Edge
 	{
@@ -294,24 +348,79 @@ public:
 			return verts[0]->id < e.verts[0]->id;
 		}
 
-		bool is_border() const
+		bool is_border() const { return link_faces.size() <= 1; }
+		bool is_wire() const { return link_faces.size() == 0; }
+		bool is_open() const { return link_faces.size() == 1; }
+
+		hVert other_vert(const hVert v)
 		{
-			return link_faces.size() <= 1;
+			if (verts[0] == v)
+			{
+				return verts[1];
+			}
+			else if (verts[1] == v)
+			{
+				return verts[0];
+			}
+			return NULL;
+		}
+
+		float length() const
+		{
+			return (verts[0]->co - verts[1]->co).length();
+		}
+
+		bool containts(const hVert vert) const
+		{
+			return (verts[0] == vert) || (verts[1] == vert);
 		}
 	};
 	struct Face
 	{
-		int id;
+		int id = -1;
 		std::vector<hVert> verts;
 		std::vector<hEdge> link_edges;
 		Face(int _id = -1) : id(_id) {}
 
-		bool is_front( MQScene scene )
+		int vert_index(const Vert* vert) const
+		{
+			for (int i = 0; i < verts.size(); i++)
+			{
+				if (verts[i] == vert)
+				{
+					return i;
+				}
+			}
+			return -1;
+		}
+
+		const Vert* loop_next(const Vert* vert) const
+		{
+			auto idx = vert_index(vert);
+			return verts[(idx + 1) % verts.size()];
+			return NULL;
+		}
+		const Vert* loop_prev(const Vert* vert) const
+		{
+			auto idx = vert_index(vert);
+			return verts[(idx - 1 + verts.size()) % verts.size()];
+			return NULL;
+		}
+
+		MQPoint corner_normal(const Vert* vert) const
+		{
+			auto n0 = (loop_next(vert)->co - vert->co).normalized();
+			auto n1 = (loop_prev(vert)->co - vert->co).normalized();
+			return n0.cross(n1);
+			return MQPoint(0, 1, 0);
+		}
+
+		bool is_front(MQScene scene)
 		{
 			int num = verts.size();
-			MQPoint* sp = (MQPoint*)alloca( sizeof(MQPoint) * num );
-			for (int i = 0; i<num; i++) {
-				sp[i] = scene->Convert3DToScreen( this->verts[i]->co );
+			MQPoint* sp = (MQPoint*)alloca(sizeof(MQPoint) * num);
+			for (int i = 0; i < num; i++) {
+				sp[i] = scene->Convert3DToScreen(this->verts[i]->co);
 
 				// 視野より手前にあれば表とみなさない
 				if (sp[i].z <= 0) return false;
@@ -334,8 +443,6 @@ public:
 
 			return false;
 		}
-
-
 	};
 
 	struct Obj
@@ -364,6 +471,25 @@ public:
 			return NULL;
 		}
 
+		Vert* find_mirror(Vert* vert, float sqrt_dist = 0.000000001f)
+		{
+			if (vert->mirror == NULL)
+			{
+				auto mco = MQVector(-vert->co.x, vert->co.y, vert->co.z);
+				for (auto& v : verts)
+				{
+					float d = (v.co - mco).square_norm();
+					if (d < sqrt_dist)
+					{
+						vert->mirror = &v;
+						v.mirror = vert;
+						break;
+					}
+				}
+			}
+			return vert->mirror;
+		}
+
 	private:
 		Obj(MQObject obj)
 		{
@@ -390,7 +516,7 @@ public:
 			for (int fi = 0; fi < fcnt; fi++)
 			{
 				auto pcnt = obj->GetFacePointCount(fi);
-				int* points = (int*)alloca(sizeof(int) * pcnt);
+				int points[MAX_FACE_VERT];// = (int*)alloca(sizeof(int) * pcnt);
 				obj->GetFacePointArray(fi, points);
 
 				faces[fi].id = fi;
@@ -415,7 +541,7 @@ public:
 				//Edge構築
 				auto pcnt = face->verts.size();
 
-				if (pcnt <= 2)
+				if (pcnt == 2)
 				{
 					auto a = face->verts[0];
 					auto b = face->verts[1];
@@ -450,13 +576,15 @@ public:
 				{
 					face->link_edges.push_back(edge);
 				}
+				edge->verts[0]->link_edges.push_back(edge);
+				edge->verts[1]->link_edges.push_back(edge);
 			}
 		}
 	};
 
 	hObj obj = NULL;
 
-	bool Update( MQObject mq_obj)
+	bool Update(MQObject mq_obj)
 	{
 		if (obj == NULL)
 		{
@@ -523,7 +651,7 @@ public:
 
 class MQSceneCache
 {
-public :
+public:
 	class Scene
 	{
 	public:
@@ -552,18 +680,26 @@ public :
 				in_screen[i] = w > 0;
 			}
 		}
+
+		void UpdateVert(MQScene scene, int index, const MQPoint& p)
+		{
+			float w = 0.0f;
+			coords[index] = scene->Convert3DToScreen(p, &w);
+			in_screen[index] = w > 0;
+		}
 	};
 
-	std::map<MQScene, Scene> scenes;
+	std::map<MQScene, std::shared_ptr< Scene> > scenes;
 
-	const Scene& Get(MQScene scene, MQGeom::hObj obj)
+	std::shared_ptr< Scene> Get(MQScene scene, MQGeom::hObj obj)
 	{
 		if (scenes.find(scene) == scenes.end())
 		{
-			scenes[scene] = Scene(scene, obj );
+			scenes[scene] = std::shared_ptr< Scene>(new Scene(scene, obj));
 		}
 		return scenes[scene];
 	}
+
 
 	void Clear()
 	{
@@ -571,7 +707,7 @@ public :
 	}
 };
 
-typedef acc::BVHTree<int, MQVector> MQBVHTree;
+typedef acc::BVHTree< int, MQVector> MQBVHTree;
 
 class MQSnap
 {
@@ -595,41 +731,50 @@ public:
 		Tree(MQDocument doc, MQObject obj)
 		{
 			std::vector<MQVector> verts(obj->GetVertexCount());
-			obj->GetVertexArray((MQPoint *)verts.data());
+			obj->GetVertexArray((MQPoint*)verts.data());
 
 			auto fcnt = obj->GetFaceCount();
 			std::vector<int> triangles;
+			triangles.reserve(fcnt * 2);
 			triangle_map = std::shared_ptr<std::vector<int>>(new std::vector<int>());
-			for (int fi = 0; fi < fcnt; fi++)
+			triangle_map->reserve(fcnt * 3 * 2);
 			{
-				int pcnt = obj->GetFacePointCount(fi);
-				if (pcnt >= 3)
+				//				TimeTracer timer;
+				for (int fi = 0; fi < fcnt; fi++)
 				{
-					int triCount = (pcnt - 2);
-					int triSize = triCount * 3;
-					int* is = (int*)alloca(sizeof(int) * pcnt);
-					int* tris = (int*)alloca(sizeof(int) * triSize);
-					MQPoint* points = (MQPoint*)alloca(sizeof(MQPoint) * pcnt);
-					obj->GetFacePointArray(fi, is);
-					for (int i = 0; i < pcnt; i++)
+					int pcnt = obj->GetFacePointCount(fi);
+					if (pcnt >= 3)
 					{
-						points[i] = verts[is[i]];
-					}
+						int triCount = (pcnt - 2);
+						int triSize = triCount * 3;
+						int is[MAX_FACE_VERT]; //= (int*)alloca(sizeof(int) * pcnt);
+						int tris[MAX_FACE_VERT];// = (int*)alloca(sizeof(int) * triSize);
+						MQPoint points[MAX_FACE_VERT]; // = (MQPoint*)alloca(sizeof(MQPoint) * pcnt);
+						obj->GetFacePointArray(fi, is);
+						for (int i = 0; i < pcnt; i++)
+						{
+							points[i] = verts[is[i]];
+						}
 
-					doc->Triangulate(points, pcnt, tris, triSize);
+						doc->Triangulate(points, pcnt, tris, triSize);
 
-					for (int it = 0; it < triSize; it++)
-					{
-						auto x = tris[it];
-						triangles.push_back(is[x]);
-					}
-					for (int it = 0; it < triCount; it++)
-					{
-						triangle_map->push_back(fi);
+						for (int it = 0; it < triSize; it++)
+						{
+							auto x = tris[it];
+							triangles.push_back(is[x]);
+						}
+						for (int it = 0; it < triCount; it++)
+						{
+							triangle_map->push_back(fi);
+						}
 					}
 				}
 			}
-			bvh_tree = MQBVHTree::create(triangles, verts);
+
+			{
+				//				TimeTracer timer;
+				bvh_tree = MQBVHTree::create(triangles, verts, std::thread::hardware_concurrency());
+			}
 		}
 	};
 
@@ -643,21 +788,30 @@ public:
 
 	void Update(MQDocument doc)
 	{
-		std::map<MQObject, std::shared_ptr<Tree> > new_trees;
+		std::vector<MQObject> objs;
 		for (int io = 0; io < doc->GetObjectCount(); io++)
 		{
 			auto obj = doc->GetObject(io);
-
 			if (obj->GetLocking() == TRUE && obj->GetVisible() != 0)
 			{
-				if (trees.find(obj) != trees.end())
-				{
-					new_trees[obj] = trees[obj];
-				}
-				else
-				{
-					new_trees[obj] = std::shared_ptr<Tree>( new Tree(doc, obj) );
-				}
+				objs.push_back(obj);
+			}
+		}
+		Update(doc, objs);
+	}
+
+	void Update(MQDocument doc, const std::vector<MQObject>& objs)
+	{
+		std::map<MQObject, std::shared_ptr<Tree> > new_trees;
+		for (auto obj : objs)
+		{
+			if (trees.find(obj) != trees.end())
+			{
+				new_trees[obj] = trees[obj];
+			}
+			else
+			{
+				new_trees[obj] = std::shared_ptr<Tree>(new Tree(doc, obj));
 			}
 		}
 		trees = new_trees;
@@ -665,7 +819,9 @@ public:
 
 	struct Hit
 	{
+		MQObject obj = NULL;
 		bool is_hit = false;
+		int idx = -1;
 		MQPoint position;
 		float t;
 	};
@@ -688,8 +844,10 @@ public:
 			MQBVHTree::Hit hit;
 			if (tree.second->bvh_tree->intersect(ray, &hit))
 			{
+				result.obj = tree.first;
 				result.position = ray.origin + ray.dir * hit.t;
 				result.t = hit.t;
+				result.idx = (*tree.second->triangle_map)[hit.idx];
 				result.is_hit = true;
 				tmin = hit.t;
 			}
@@ -698,7 +856,7 @@ public:
 		return result;
 	}
 
-	Hit colsest_point( const MQVector& p )
+	Hit colsest_point(const MQVector& p)
 	{
 		Hit hit;
 		hit.t = std::numeric_limits<float>::max();
@@ -712,27 +870,53 @@ public:
 				hit.position = r.first;
 				hit.t = r.second;
 				hit.is_hit = true;
+				hit.obj = tree.first;
 			}
 		}
 		return hit;
 	}
 
-	bool check_view(MQScene scene, const MQPoint& pos, float thrdshold = 0.00001f) const
+	MQPoint snap_point(const MQGeom::Vert* vert)
+	{
+		if (!vert->is_polygon())
+		{
+			return colsest_point(vert->co).position;
+		}
+		else
+		{
+			MQRay ray = MQRay(vert->co, vert->normal());
+			auto hit0 = intersect(ray);
+			auto hit1 = intersect(ray.negative());
+			return (hit0.t > hit1.t) ? hit1.position : hit0.position;
+		}
+	}
+
+	bool check_view(MQScene scene, const MQPoint& pos, float thrdshold = 0.01f) const
 	{
 		MQVector screen_pos = scene->Convert3DToScreen(pos);
 
 		auto view_ray = MQRay(scene, screen_pos);
-		auto ray = MQRay(pos, view_ray.vector);
-
+		MQPoint vp = view_ray.origin;
 		MQSnap::Hit hitV = intersect(view_ray);
 		if (!hitV.is_hit) return true;
+		float d0 = (pos - vp).abs();	//視点から頂点への距離
+		float d1 = hitV.t;				//視点からヒット点への距離
+		if (d0 < d1 + thrdshold)
+		{
+			return true;
+		}
 
+		auto ray = MQRay(pos, view_ray.vector);
 		auto hit0 = intersect(ray.negative());
+
+		if (hit0.obj == hitV.obj && hit0.idx == hitV.idx) return true;
+
 		auto hit1 = intersect(ray);
+		if (hit0.t > hit1.t) return false;
 
-		auto hit = (hit0.t < hit1.t) ? hit0 : hit1;
+		auto d2 = hitV.t + hit0.t;
 
-		return (hitV.position - hit.position).norm() < thrdshold;
+		return abs(d0 - d2) < thrdshold;
 	}
 
 	std::map<MQObject, std::shared_ptr<Tree> > trees;
@@ -740,7 +924,7 @@ public:
 
 
 
-MQPoint2 IntersectLineAndLinePos(const MQPoint &p1, const MQPoint &p2, const MQPoint &p3, const MQPoint &p4)
+MQPoint2 IntersectLineAndLinePos(const MQPoint& p1, const MQPoint& p2, const MQPoint& p3, const MQPoint& p4)
 {
 	auto det = (p1.x - p2.x) * (p4.y - p3.y) - (p4.x - p3.x) * (p1.y - p2.y);
 	auto t = ((p4.y - p3.y) * (p4.x - p2.x) + (p3.x - p4.x) * (p4.y - p2.y)) / det;
@@ -750,7 +934,7 @@ MQPoint2 IntersectLineAndLinePos(const MQPoint &p1, const MQPoint &p2, const MQP
 }
 
 
-int IntersectLineAndLine(const MQPoint &p1, const MQPoint &p2, const MQPoint &p3, const MQPoint &p4)
+int IntersectLineAndLine(const MQPoint& p1, const MQPoint& p2, const MQPoint& p3, const MQPoint& p4)
 {
 	float s, t;
 	s = (p1.x - p2.x) * (p3.y - p1.y) - (p1.y - p2.y) * (p3.x - p1.x);
